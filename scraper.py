@@ -79,10 +79,8 @@ def parse_schedule(html, team_name, team_url):
     """
     Parse the TEAM SCHEDULE section of a Perfect Game team page.
 
-    The schedule is rendered as an HTML table where:
-      - Tournament/event header rows span the full width and contain a link
-        to /events/Default.aspx?event=XXXXX
-      - Game rows contain: date, time, home/away, opponent, field, maps link
+    The schedule is in a Telerik RadGrid with ID containing 'rgSchedule'.
+    The outer grid has event header rows; a nested 'rgEvent' grid has game rows.
 
     Returns a list of game dicts.
     """
@@ -91,184 +89,187 @@ def parse_schedule(html, team_name, team_url):
 
     debug_log(f"HTML length: {len(html)} chars")
 
-    # Dump page structure for debugging
+    # Save raw HTML for debugging
     if DEBUG:
-        # Save raw HTML to file for inspection
         safe_name = re.sub(r"[^a-zA-Z0-9]", "_", team_name)
         debug_path = f"debug_{safe_name}.html"
         with open(debug_path, "w") as f:
             f.write(html)
         debug_log(f"Saved raw HTML to {debug_path}")
 
-        # Log page title
-        title_tag = soup.find("title")
-        debug_log(f"Page title: {title_tag.get_text(strip=True) if title_tag else 'None'}")
-
-        # Log all headings
-        for tag in ["h1", "h2", "h3", "h4"]:
-            for el in soup.find_all(tag):
-                debug_log(f"  <{tag}>: {el.get_text(strip=True)[:100]}")
-
-        # Log all tables with their IDs and classes
-        tables = soup.find_all("table")
-        debug_log(f"Found {len(tables)} <table> elements")
-        for i, tbl in enumerate(tables):
-            tbl_id = tbl.get("id", "")
-            tbl_class = " ".join(tbl.get("class", []))
-            rows = tbl.find_all("tr")
-            first_row_text = ""
-            if rows:
-                first_row_text = rows[0].get_text(strip=True)[:120]
-            debug_log(f"  Table[{i}] id='{tbl_id}' class='{tbl_class}' rows={len(rows)} first_row='{first_row_text}'")
-
-        # Log all links containing 'event' or 'schedule'
-        for a in soup.find_all("a", href=True):
-            href = a.get("href", "")
-            if re.search(r"event|schedule|game", href, re.I):
-                debug_log(f"  Link: href='{href}' text='{a.get_text(strip=True)[:80]}'")
-
-        # Log all elements containing schedule-related text
-        for el in soup.find_all(string=re.compile(r"schedule|game|tournament|event", re.I)):
-            parent = el.parent
-            if parent:
-                debug_log(f"  Text match in <{parent.name}> id='{parent.get('id', '')}': '{str(el).strip()[:100]}'")
-
-    # Find the schedule table – look for the "TEAM SCHEDULE" heading first
-    schedule_heading = None
-    for el in soup.find_all(["h2", "h3", "h4", "div", "span", "td", "th"]):
-        text = el.get_text(strip=True).upper()
-        if "SCHEDULE" in text:
-            debug_log(f"Potential schedule heading: <{el.name}> '{el.get_text(strip=True)[:100]}'")
-        if text.startswith("TEAM SCHEDULE"):
-            schedule_heading = el
-            break
-
-    if not schedule_heading:
-        # Try alternate: look for schedule-related table directly
-        schedule_heading = soup.find(string=re.compile(r"TEAM\s+SCHEDULE", re.I))
-        if schedule_heading:
-            debug_log(f"Found schedule heading via string search: '{str(schedule_heading).strip()[:100]}'")
-
-    if schedule_heading:
-        debug_log(f"Schedule heading found: <{getattr(schedule_heading, 'name', 'text')}> '{str(schedule_heading).strip()[:100]}'")
+    # --- Step 1: Find the rgSchedule RadGrid table by ID ---
+    schedule_table = soup.find("table", id=re.compile(r"rgSchedule.*_ctl00$", re.I))
+    if schedule_table:
+        debug_log(f"Found rgSchedule table: id='{schedule_table.get('id', '')}'")
     else:
-        debug_log("No schedule heading found")
-
-    # Find the table after the schedule heading
-    schedule_table = None
-    if schedule_heading:
-        # Walk up to find the containing element, then find the next table
-        parent = schedule_heading
-        for depth in range(10):
-            parent = parent.parent
-            if parent is None:
-                break
-            tbl = parent.find("table")
-            if tbl and tbl != schedule_heading:
-                schedule_table = tbl
-                debug_log(f"Found schedule table at depth {depth}, id='{tbl.get('id', '')}', rows={len(tbl.find_all('tr'))}")
-                break
+        # Fallback: any table with ID containing 'rgSchedule'
+        schedule_table = soup.find("table", id=re.compile(r"rgSchedule", re.I))
+        if schedule_table:
+            debug_log(f"Found rgSchedule table (fallback): id='{schedule_table.get('id', '')}'")
 
     if not schedule_table:
-        # Fallback: look for any table with event links
-        for table in soup.find_all("table"):
-            if table.find("a", href=re.compile(r"events/Default\.aspx\?event=", re.I)):
-                schedule_table = table
-                debug_log(f"Found schedule table via event link fallback, id='{table.get('id', '')}'")
-                break
-
-    if not schedule_table:
-        # Additional fallback: look for tables with IDs containing 'Schedule'
-        for table in soup.find_all("table"):
-            tbl_id = table.get("id", "")
-            if re.search(r"schedule", tbl_id, re.I):
-                schedule_table = table
-                debug_log(f"Found schedule table via ID match: '{tbl_id}'")
-                break
-
-    if not schedule_table:
-        print(f"  WARNING: Could not find schedule table for {team_name}")
-        if DEBUG:
-            # As last resort, dump all text that looks like dates
-            date_pattern = re.compile(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}", re.I)
-            for el in soup.find_all(string=date_pattern):
-                parent = el.parent
-                debug_log(f"  Date-like text in <{parent.name if parent else '?'}>: '{str(el).strip()[:100]}'")
+        print(f"  WARNING: Could not find rgSchedule table for {team_name}")
         return games
 
+    # --- Step 2: Extract event info from the outer schedule grid ---
+    # The event link (e.g. "2026 11U PG New England League") is in the outer grid
     current_event = "Unknown Event"
     current_event_url = None
 
-    rows = schedule_table.find_all("tr")
-    debug_log(f"Processing {len(rows)} rows in schedule table")
+    event_link = schedule_table.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
+    if event_link:
+        current_event = event_link.get_text(strip=True)
+        href = event_link.get("href", "")
+        if href.startswith("/"):
+            current_event_url = f"https://www.perfectgame.org{href}"
+        elif href.startswith("http"):
+            current_event_url = href
+        else:
+            current_event_url = f"https://www.perfectgame.org/{href}"
+        debug_log(f"Event: '{current_event}' URL: {current_event_url}")
+
+    # --- Step 3: Find the inner rgEvent table (nested game details) ---
+    event_table = schedule_table.find("table", id=re.compile(r"rgEvent", re.I))
+    if event_table:
+        debug_log(f"Found rgEvent table: id='{event_table.get('id', '')}'")
+    else:
+        # Use the outer table if no nested one found
+        event_table = schedule_table
+        debug_log("No nested rgEvent table found, using outer table")
+
+    # --- Step 4: Parse game rows from the event table ---
+    rows = event_table.find_all("tr", recursive=False)
+    if not rows:
+        # RadGrid may have tbody
+        tbody = event_table.find("tbody")
+        if tbody:
+            rows = tbody.find_all("tr", recursive=False)
+    debug_log(f"Processing {len(rows)} rows in event table")
+
     for row_idx, row in enumerate(rows):
-        cells = row.find_all(["td", "th"])
+        cells = row.find_all("td", recursive=False)
         if not cells:
             continue
 
-        # Check if this is a tournament/event header row
-        event_link = row.find("a", href=re.compile(r"events/Default\.aspx\?event=", re.I))
-        if event_link:
-            current_event = event_link.get_text(strip=True)
-            href = event_link.get("href", "")
-            if href.startswith("/"):
-                current_event_url = f"https://www.perfectgame.org{href}"
-            elif href.startswith("http"):
-                current_event_url = href
-            else:
-                current_event_url = f"https://www.perfectgame.org/{href}"
+        cell_texts = [c.get_text(strip=True) for c in cells]
+        if DEBUG and row_idx < 30:
+            debug_log(f"  Row[{row_idx}] cells={len(cells)}: {[t[:60] for t in cell_texts]}")
+            # Also log any nested tables/divs structure
+            for ci, c in enumerate(cells):
+                inner_divs = c.find_all("div", recursive=False)
+                inner_spans = c.find_all("span", recursive=False)
+                inner_links = c.find_all("a", recursive=False)
+                if inner_divs or inner_spans or inner_links:
+                    parts = []
+                    for d in inner_divs:
+                        parts.append(f"div:'{d.get_text(strip=True)[:40]}'")
+                    for s in inner_spans:
+                        parts.append(f"span:'{s.get_text(strip=True)[:40]}'")
+                    for a in inner_links:
+                        parts.append(f"a[{a.get('href','')[:50]}]:'{a.get_text(strip=True)[:30]}'")
+                    debug_log(f"    Cell[{ci}] children: {parts}")
+
+        # Skip empty rows or header rows
+        full_text = " ".join(cell_texts)
+        if not full_text.strip():
             continue
 
-        # Try to parse as a game row
-        if DEBUG and row_idx < 20:
-            cell_texts = [c.get_text(strip=True)[:50] for c in cells]
-            debug_log(f"  Row[{row_idx}] cells={len(cells)}: {cell_texts}")
-        game = parse_game_row(cells, current_event, current_event_url, team_name, team_url)
+        # Check if this row has a DiamondKast game link (indicates a game row)
+        game_link = row.find("a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I))
+
+        # Try to parse the game data from cells
+        game = parse_game_row(cells, cell_texts, full_text, game_link,
+                              current_event, current_event_url, team_name, team_url)
         if game:
             games.append(game)
             debug_log(f"  -> Parsed game: {game['title']} on {game['date']}")
+
+    # If no games found from the event table, try parsing ALL rows
+    # from the outer schedule table (different page structure)
+    if not games:
+        debug_log("No games from rgEvent, trying all rows in rgSchedule")
+        all_rows = schedule_table.find_all("tr")
+        debug_log(f"Trying {len(all_rows)} rows from outer table")
+        for row_idx, row in enumerate(all_rows):
+            cells = row.find_all("td", recursive=False)
+            if not cells:
+                continue
+            cell_texts = [c.get_text(strip=True) for c in cells]
+            full_text = " ".join(cell_texts)
+            if not full_text.strip():
+                continue
+
+            # Check for event header
+            ev_link = row.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
+            if ev_link:
+                current_event = ev_link.get_text(strip=True)
+                href = ev_link.get("href", "")
+                if href.startswith("/"):
+                    current_event_url = f"https://www.perfectgame.org{href}"
+                else:
+                    current_event_url = href
+                continue
+
+            if DEBUG and row_idx < 30:
+                debug_log(f"  OuterRow[{row_idx}] cells={len(cells)}: {[t[:60] for t in cell_texts]}")
+
+            game_link = row.find("a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I))
+            game = parse_game_row(cells, cell_texts, full_text, game_link,
+                                  current_event, current_event_url, team_name, team_url)
+            if game:
+                games.append(game)
+                debug_log(f"  -> Parsed game: {game['title']} on {game['date']}")
 
     print(f"  Found {len(games)} games for {team_name}")
     return games
 
 
-def parse_game_row(cells, event_name, event_url, team_name, team_url):
+def parse_game_row(cells, cell_texts, full_text, game_link,
+                   event_name, event_url, team_name, team_url):
     """
-    Parse a single game row from the schedule table.
+    Parse a single game row from the RadGrid schedule table.
 
-    Expected cell contents (order may vary):
-      - Date: e.g. "Mar 28 Sat"
-      - Time: e.g. "1:30 PM" or "TBD"
-      - Home/Away: "vs." or "@"
-      - Opponent name
-      - Field name
-      - Google Maps link with address
+    Tries multiple strategies to extract date, time, opponent, and location:
+    1. Standard date pattern: "Mar 28 Sat" or "Mar 28"
+    2. Opponent from "vs." / "@" indicators
+    3. Location from Google Maps links or field name text
     """
-    text_parts = [c.get_text(strip=True) for c in cells]
-    full_text = " ".join(text_parts)
-
-    # Must contain a date-like pattern
+    # --- Date parsing ---
+    # Try "Mon Day DayOfWeek" pattern first (e.g. "Mar 28 Sat")
     date_match = re.search(
         r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(Sun|Mon|Tue|Wed|Thu|Fri|Sat)",
         full_text, re.I
     )
+    # Fallback: "Mon Day" without day-of-week (e.g. "Mar 28")
     if not date_match:
-        return None
+        date_match = re.search(
+            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})",
+            full_text, re.I
+        )
+    # Fallback: MM/DD/YYYY format
+    if not date_match:
+        date_match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", full_text)
+        if date_match:
+            try:
+                game_date = datetime(int(date_match.group(3)),
+                                     int(date_match.group(1)),
+                                     int(date_match.group(2)))
+            except ValueError:
+                return None
+        else:
+            return None
+    else:
+        month_str = date_match.group(1)
+        day_str = date_match.group(2)
+        now = datetime.now()
+        try:
+            game_date = datetime.strptime(f"{month_str} {day_str} {now.year}", "%b %d %Y")
+            if game_date.month < now.month - 6:
+                game_date = datetime.strptime(f"{month_str} {day_str} {now.year + 1}", "%b %d %Y")
+        except ValueError:
+            return None
 
-    month_str = date_match.group(1)
-    day_str = date_match.group(2)
-
-    # Determine year from context (current year or config)
-    now = datetime.now()
-    try:
-        game_date = datetime.strptime(f"{month_str} {day_str} {now.year}", "%b %d %Y")
-        # If the date is far in the past, it might be next year
-        if game_date.month < now.month - 6:
-            game_date = datetime.strptime(f"{month_str} {day_str} {now.year + 1}", "%b %d %Y")
-    except ValueError:
-        return None
-
-    # Parse time
+    # --- Time parsing ---
     time_match = re.search(r"(\d{1,2}:\d{2}\s*[AP]M)", full_text, re.I)
     game_time = None
     is_allday = False
@@ -280,47 +281,36 @@ def parse_game_row(cells, event_name, event_url, team_name, team_url):
     else:
         is_allday = True
 
-    # Home/Away indicator
-    if " @ " in full_text or "\t@\t" in full_text or re.search(r"\b@\b", full_text):
+    # --- Home/Away ---
+    if re.search(r"\bvs\.?\b", full_text, re.I):
+        home_away = "vs."
+    elif re.search(r"\b@\b", full_text):
         home_away = "@"
     else:
         home_away = "vs."
 
-    # Opponent name – text near the vs./@
-    opponent = extract_opponent(cells, home_away)
+    # --- Opponent ---
+    opponent = extract_opponent(cells, cell_texts, full_text, home_away)
 
-    # Field name and address
+    # --- Location (field + address) ---
     field_name = None
     address = None
-    maps_link = None
     for cell in cells:
         link = cell.find("a", href=re.compile(r"google\.com/maps|maps\.google", re.I))
         if link:
-            maps_link = link.get("href", "")
-            address = extract_address_from_maps_link(maps_link)
-            # Field name is usually the link text or nearby text
+            address = extract_address_from_maps_link(link.get("href", ""))
             link_text = link.get_text(strip=True)
             if link_text and link_text.lower() not in ("map", "directions", "maps"):
                 field_name = link_text
             break
 
-    # If no maps link, look for field name in cells
+    # Look for field name in cell text if not found via maps link
     if not field_name:
-        for cell in cells:
-            cell_text = cell.get_text(strip=True)
-            # Skip cells that are date, time, vs/@, or opponent
-            if (date_match.group(0) in cell_text or
-                    (time_match and time_match.group(0) in cell_text) or
-                    cell_text in ("vs.", "@", "vs", opponent or "")):
-                continue
-            # Potential field name
-            if len(cell_text) > 3 and not re.match(r"^\d", cell_text):
-                # Check if it looks like a field/location
-                if any(kw in cell_text.lower() for kw in ("field", "park", "complex", "diamond", "stadium", "turf")):
-                    field_name = cell_text
-                    break
+        for text in cell_texts:
+            if any(kw in text.lower() for kw in ("field", "park", "complex", "diamond", "stadium", "turf")):
+                field_name = text.strip()
+                break
 
-    # Build location string
     location = None
     if field_name and address:
         location = f"{field_name}, {address}"
@@ -328,12 +318,19 @@ def parse_game_row(cells, event_name, event_url, team_name, team_url):
         location = field_name
     elif address:
         location = address
-
-    # Check for TBD location
     if location and "tbd" in location.lower():
         location = None
 
-    # Build title
+    # --- Game link ---
+    game_url = None
+    if game_link:
+        href = game_link.get("href", "")
+        if href.startswith("/"):
+            game_url = f"https://www.perfectgame.org{href}"
+        elif href.startswith("http"):
+            game_url = href
+
+    # --- Build title ---
     title = f"{team_name} {home_away} {opponent}" if opponent else f"{team_name} - Game"
 
     return {
@@ -350,26 +347,33 @@ def parse_game_row(cells, event_name, event_url, team_name, team_url):
         "event_url": event_url,
         "team_name": team_name,
         "team_url": team_url,
+        "game_url": game_url,
     }
 
 
-def extract_opponent(cells, home_away_indicator):
+def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
     """Extract the opponent name from the row cells."""
-    texts = [c.get_text(strip=True) for c in cells]
-
-    # Find the cell right after "vs." or "@"
-    for i, t in enumerate(texts):
+    # Strategy 1: Find cell right after "vs." or "@"
+    for i, t in enumerate(cell_texts):
         if t in ("vs.", "@", "vs"):
-            if i + 1 < len(texts):
-                opp = texts[i + 1]
+            if i + 1 < len(cell_texts):
+                opp = cell_texts[i + 1].strip()
                 if opp and len(opp) > 1:
                     return opp
 
-    # Alternative: look for a cell containing "vs." or "@" inline
-    for t in texts:
+    # Strategy 2: Inline "vs." or "@" in a cell
+    for t in cell_texts:
         match = re.search(r"(?:vs\.?|@)\s+(.+)", t, re.I)
         if match:
             return match.group(1).strip()
+
+    # Strategy 3: Look for team-name-like text in cells (links to team pages)
+    for cell in cells:
+        link = cell.find("a", href=re.compile(r"PGBA/Team|team=", re.I))
+        if link:
+            text = link.get_text(strip=True)
+            if text and len(text) > 2:
+                return text
 
     return None
 
