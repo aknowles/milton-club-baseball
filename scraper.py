@@ -387,7 +387,7 @@ def team_slug(team_name):
     return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
 
 
-def make_calendar(games, config, cal_name="MDB Knights Baseball"):
+def make_calendar(games, config, cal_name="Milton Club Baseball"):
     """Generate an iCal calendar from the list of game dicts."""
     from pytz import timezone as pytz_timezone
 
@@ -517,7 +517,7 @@ def generate_index_html(all_games, config):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MDB Knights Baseball Calendars</title>
+    <title>Milton Club Baseball Calendars</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9918;</text></svg>">
     <style>
         * {{ box-sizing: border-box; }}
@@ -656,7 +656,7 @@ def generate_index_html(all_games, config):
     </style>
 </head>
 <body>
-    <h1>MDB Knights Baseball</h1>
+    <h1>Milton Club Baseball</h1>
     <p class="subtitle">Subscribe to automatically sync game schedules to your calendar</p>
 
     <div id="copied" class="copied">URL Copied!</div>
