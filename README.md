@@ -6,16 +6,12 @@ Automated calendar subscriptions for MDB Knights Perfect Game baseball schedules
 
 1. **GitHub Actions** runs twice daily (8 AM & 8 PM ET)
 2. **Scraper** fetches team schedules from [Perfect Game](https://www.perfectgame.org)
-3. **Calendar file** (`calendar.ics`) is generated and committed
+3. **Calendar files** (per-team `.ics` in `calendars/`) are generated and committed
 4. **GitHub Pages** serves the calendar for subscription
 
 ## Subscribe
 
-Visit the [calendar page](https://aknowles.github.io/milton-club-baseball) for subscription links, or add this URL directly:
-
-```
-https://aknowles.github.io/milton-club-baseball/calendar.ics
-```
+Visit the [calendar page](https://aknowles.github.io/milton-club-baseball) for per-team subscription links.
 
 ### Setup by Platform
 
@@ -64,7 +60,7 @@ python scraper.py
 .github/workflows/update-calendar.yml  # GitHub Actions workflow
 scraper.py                              # Schedule scraper + calendar generator
 config.json                             # Team configuration
-calendar.ics                            # Generated calendar file
+calendars/                              # Generated per-team .ics files
 index.html                              # Generated GitHub Pages site
 requirements.txt                        # Python dependencies
 ```

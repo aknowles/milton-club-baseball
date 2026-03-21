@@ -43,14 +43,14 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          git diff --quiet calendar.ics index.html && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet calendars/ index.html && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Commit and push
         if: steps.changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add calendar.ics index.html
+          git add calendars/ index.html
           git commit -m "Update calendar $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
 

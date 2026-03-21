@@ -382,7 +382,12 @@ def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
 # Calendar generation
 # ---------------------------------------------------------------------------
 
-def make_calendar(all_games, config):
+def team_slug(team_name):
+    """Convert a team name to a URL-safe filename slug."""
+    return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
+
+
+def make_calendar(games, config, cal_name="MDB Knights Baseball"):
     """Generate an iCal calendar from the list of game dicts."""
     from pytz import timezone as pytz_timezone
 
@@ -393,10 +398,10 @@ def make_calendar(all_games, config):
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")
-    cal.add("x-wr-calname", "MDB Knights Baseball")
+    cal.add("x-wr-calname", cal_name)
     cal.add("x-wr-timezone", config.get("timezone", TIMEZONE))
 
-    for game in all_games:
+    for game in games:
         event = Event()
         event.add("summary", game["title"])
 
@@ -446,7 +451,6 @@ def make_calendar(all_games, config):
 def generate_index_html(all_games, config):
     """Generate an index.html for GitHub Pages with calendar subscribe links."""
     base_url = config.get("base_url", "")
-    cal_url = f"{base_url}/calendar.ics"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M EST")
 
     # Group games by team
@@ -480,6 +484,9 @@ def generate_index_html(all_games, config):
         if games and games[0].get("event_name"):
             event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
 
+        slug = team_slug(team_name)
+        team_cal_url = f"{base_url}/calendars/{slug}.ics"
+
         team_sections += f"""
         <div class="grade-section">
             <button class="collapsible" onclick="toggleSection(this)">
@@ -491,6 +498,14 @@ def generate_index_html(all_games, config):
             </button>
             <div class="collapsible-content">
                 {event_label}
+                <div class="subscribe-url">
+                    <code>{team_cal_url}</code>
+                    <button onclick="copyUrl('{team_cal_url}')" title="Copy URL">&#128203;</button>
+                </div>
+                <div class="buttons" style="margin-bottom: 12px;">
+                    <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
+                    <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
+                </div>
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
@@ -646,21 +661,8 @@ def generate_index_html(all_games, config):
 
     <div id="copied" class="copied">URL Copied!</div>
 
-    <div class="calendar-card">
-        <h3>Combined Calendar (All Teams)</h3>
-        <p class="description">All MDB Knights games in one calendar</p>
-        <div class="subscribe-url">
-            <code>{cal_url}</code>
-            <button onclick="copyUrl('{cal_url}')" title="Copy URL">&#128203;</button>
-        </div>
-        <div class="buttons">
-            <a class="btn btn-primary" href="webcal://{cal_url.replace('https://', '')}">Subscribe</a>
-            <a class="btn btn-secondary" href="{cal_url}" download>Download .ics</a>
-        </div>
-    </div>
-
     <h2>Team Schedules</h2>
-    <p style="color: #666; font-size: 14px;">Click a team to expand and see upcoming games.</p>
+    <p style="color: #666; font-size: 14px;">Click a team to subscribe to their calendar or see upcoming games.</p>
     {team_sections}
 
     <div class="instructions">
@@ -734,16 +736,20 @@ def main():
     print(f"\nTotal games found: {len(all_games)}")
 
     if not all_games:
-        print("WARNING: No games found. Writing empty calendar.")
+        print("WARNING: No games found. Writing empty calendars.")
 
-    # Generate calendar
-    cal = make_calendar(all_games, config)
-    cal_bytes = cal.to_ical()
+    # Group games by team and write per-team ICS files
+    os.makedirs("calendars", exist_ok=True)
+    games_by_team = {}
+    for game in all_games:
+        games_by_team.setdefault(game["team_name"], []).append(game)
 
-    # Write calendar.ics
-    with open("calendar.ics", "wb") as f:
-        f.write(cal_bytes)
-    print("Wrote calendar.ics")
+    for tname, tgames in games_by_team.items():
+        cal = make_calendar(tgames, config, cal_name=tname)
+        filename = f"calendars/{team_slug(tname)}.ics"
+        with open(filename, "wb") as f:
+            f.write(cal.to_ical())
+        print(f"Wrote {filename}")
 
     # Generate and write index.html
     index_html = generate_index_html(all_games, config)
