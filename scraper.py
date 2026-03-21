@@ -25,6 +25,13 @@ from icalendar import Calendar, Event, vText
 TIMEZONE = "US/Eastern"
 USER_AGENT = "Milton-Club-Baseball-Scraper/1.0 (GitHub Actions; +https://github.com/aknowles/milton-club-baseball)"
 REQUEST_DELAY = 2.5  # seconds between requests – be polite
+DEBUG = os.environ.get("SCRAPER_DEBUG", "0") == "1"
+
+
+def debug_log(msg):
+    """Print debug messages when SCRAPER_DEBUG=1."""
+    if DEBUG:
+        print(f"  [DEBUG] {msg}")
 
 
 def load_config(path="config.json"):
@@ -82,29 +89,84 @@ def parse_schedule(html, team_name, team_url):
     soup = BeautifulSoup(html, "html.parser")
     games = []
 
+    debug_log(f"HTML length: {len(html)} chars")
+
+    # Dump page structure for debugging
+    if DEBUG:
+        # Save raw HTML to file for inspection
+        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", team_name)
+        debug_path = f"debug_{safe_name}.html"
+        with open(debug_path, "w") as f:
+            f.write(html)
+        debug_log(f"Saved raw HTML to {debug_path}")
+
+        # Log page title
+        title_tag = soup.find("title")
+        debug_log(f"Page title: {title_tag.get_text(strip=True) if title_tag else 'None'}")
+
+        # Log all headings
+        for tag in ["h1", "h2", "h3", "h4"]:
+            for el in soup.find_all(tag):
+                debug_log(f"  <{tag}>: {el.get_text(strip=True)[:100]}")
+
+        # Log all tables with their IDs and classes
+        tables = soup.find_all("table")
+        debug_log(f"Found {len(tables)} <table> elements")
+        for i, tbl in enumerate(tables):
+            tbl_id = tbl.get("id", "")
+            tbl_class = " ".join(tbl.get("class", []))
+            rows = tbl.find_all("tr")
+            first_row_text = ""
+            if rows:
+                first_row_text = rows[0].get_text(strip=True)[:120]
+            debug_log(f"  Table[{i}] id='{tbl_id}' class='{tbl_class}' rows={len(rows)} first_row='{first_row_text}'")
+
+        # Log all links containing 'event' or 'schedule'
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "")
+            if re.search(r"event|schedule|game", href, re.I):
+                debug_log(f"  Link: href='{href}' text='{a.get_text(strip=True)[:80]}'")
+
+        # Log all elements containing schedule-related text
+        for el in soup.find_all(string=re.compile(r"schedule|game|tournament|event", re.I)):
+            parent = el.parent
+            if parent:
+                debug_log(f"  Text match in <{parent.name}> id='{parent.get('id', '')}': '{str(el).strip()[:100]}'")
+
     # Find the schedule table – look for the "TEAM SCHEDULE" heading first
     schedule_heading = None
     for el in soup.find_all(["h2", "h3", "h4", "div", "span", "td", "th"]):
-        if el.get_text(strip=True).upper().startswith("TEAM SCHEDULE"):
+        text = el.get_text(strip=True).upper()
+        if "SCHEDULE" in text:
+            debug_log(f"Potential schedule heading: <{el.name}> '{el.get_text(strip=True)[:100]}'")
+        if text.startswith("TEAM SCHEDULE"):
             schedule_heading = el
             break
 
     if not schedule_heading:
         # Try alternate: look for schedule-related table directly
         schedule_heading = soup.find(string=re.compile(r"TEAM\s+SCHEDULE", re.I))
+        if schedule_heading:
+            debug_log(f"Found schedule heading via string search: '{str(schedule_heading).strip()[:100]}'")
+
+    if schedule_heading:
+        debug_log(f"Schedule heading found: <{getattr(schedule_heading, 'name', 'text')}> '{str(schedule_heading).strip()[:100]}'")
+    else:
+        debug_log("No schedule heading found")
 
     # Find the table after the schedule heading
     schedule_table = None
     if schedule_heading:
         # Walk up to find the containing element, then find the next table
         parent = schedule_heading
-        for _ in range(10):
+        for depth in range(10):
             parent = parent.parent
             if parent is None:
                 break
             tbl = parent.find("table")
             if tbl and tbl != schedule_heading:
                 schedule_table = tbl
+                debug_log(f"Found schedule table at depth {depth}, id='{tbl.get('id', '')}', rows={len(tbl.find_all('tr'))}")
                 break
 
     if not schedule_table:
@@ -112,17 +174,34 @@ def parse_schedule(html, team_name, team_url):
         for table in soup.find_all("table"):
             if table.find("a", href=re.compile(r"events/Default\.aspx\?event=", re.I)):
                 schedule_table = table
+                debug_log(f"Found schedule table via event link fallback, id='{table.get('id', '')}'")
+                break
+
+    if not schedule_table:
+        # Additional fallback: look for tables with IDs containing 'Schedule'
+        for table in soup.find_all("table"):
+            tbl_id = table.get("id", "")
+            if re.search(r"schedule", tbl_id, re.I):
+                schedule_table = table
+                debug_log(f"Found schedule table via ID match: '{tbl_id}'")
                 break
 
     if not schedule_table:
         print(f"  WARNING: Could not find schedule table for {team_name}")
+        if DEBUG:
+            # As last resort, dump all text that looks like dates
+            date_pattern = re.compile(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}", re.I)
+            for el in soup.find_all(string=date_pattern):
+                parent = el.parent
+                debug_log(f"  Date-like text in <{parent.name if parent else '?'}>: '{str(el).strip()[:100]}'")
         return games
 
     current_event = "Unknown Event"
     current_event_url = None
 
     rows = schedule_table.find_all("tr")
-    for row in rows:
+    debug_log(f"Processing {len(rows)} rows in schedule table")
+    for row_idx, row in enumerate(rows):
         cells = row.find_all(["td", "th"])
         if not cells:
             continue
@@ -141,9 +220,13 @@ def parse_schedule(html, team_name, team_url):
             continue
 
         # Try to parse as a game row
+        if DEBUG and row_idx < 20:
+            cell_texts = [c.get_text(strip=True)[:50] for c in cells]
+            debug_log(f"  Row[{row_idx}] cells={len(cells)}: {cell_texts}")
         game = parse_game_row(cells, current_event, current_event_url, team_name, team_url)
         if game:
             games.append(game)
+            debug_log(f"  -> Parsed game: {game['title']} on {game['date']}")
 
     print(f"  Found {len(games)} games for {team_name}")
     return games
