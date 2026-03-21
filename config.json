@@ -1,0 +1,16 @@
+{
+  "teams": [
+    {
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270150&team=1019769&Year=2026",
+      "team_name": "MDB Knights 11U Gold",
+      "year": 2026
+    },
+    {
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270162&team=1019779&Year=2026",
+      "team_name": "MDB Knights 14U Blue",
+      "year": 2026
+    }
+  ],
+  "base_url": "https://aknowles.github.io/milton-club-baseball",
+  "timezone": "US/Eastern"
+}
