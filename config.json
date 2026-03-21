@@ -9,6 +9,16 @@
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270162&team=1019779&Year=2026",
       "team_name": "MDB Knights 14U Blue",
       "year": 2026
+    },
+    {
+      "url": "https://www.perfectgame.org/events/Tournaments/Teams/Default.aspx?team=1019770",
+      "team_name": "Duffy 11U Blue",
+      "year": 2026
+    },
+    {
+      "url": "https://www.perfectgame.org/events/Tournaments/Teams/Default.aspx?team=1050136",
+      "team_name": "Bandits 11U Mercado",
+      "year": 2026
     }
   ],
   "base_url": "https://aknowles.github.io/milton-club-baseball",
