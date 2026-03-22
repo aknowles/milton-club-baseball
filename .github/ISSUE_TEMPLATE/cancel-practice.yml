@@ -1,0 +1,31 @@
+name: Cancel Practice
+description: Cancel a scheduled practice
+title: "[Practice] Cancel: "
+labels: ["practice-change"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Date of practice to cancel
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-15"
+    validations:
+      required: true
+  - type: input
+    id: reason
+    attributes:
+      label: Reason (optional)
+      placeholder: "Rain / field unavailable / etc."
+    validations:
+      required: false
