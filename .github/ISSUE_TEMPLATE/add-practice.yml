@@ -1,0 +1,54 @@
+name: Add Practice
+description: Add a new practice, bullpen session, or hitting session
+title: "[Practice] Add: "
+labels: ["practice-change"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Date
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-15"
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: Time
+      description: "Format: H:MM AM/PM"
+      placeholder: "5:30 PM"
+    validations:
+      required: true
+  - type: input
+    id: duration
+    attributes:
+      label: Duration (minutes)
+      placeholder: "90"
+    validations:
+      required: false
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      placeholder: "Cunningham Park Field 2"
+    validations:
+      required: false
+  - type: input
+    id: title
+    attributes:
+      label: Event Title
+      description: "Leave blank for default (Team Name Practice)"
+      placeholder: "Bullpen Session"
+    validations:
+      required: false

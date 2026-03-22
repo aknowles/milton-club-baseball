@@ -6,12 +6,13 @@ Scrapes PGBA team schedule pages and generates a merged iCal calendar file.
 Designed for GitHub Actions + GitHub Pages deployment.
 """
 
+import hashlib
 import json
 import os
 import re
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from urllib.parse import parse_qs, urlparse, unquote_plus
 
 import requests
@@ -379,6 +380,242 @@ def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
 
 
 # ---------------------------------------------------------------------------
+# Practices
+# ---------------------------------------------------------------------------
+
+def build_practice_events(config):
+    """
+    Build practice events from the practices block in config.json.
+
+    Each team can have:
+      - adhoc: list of {date, time, duration_minutes, location, title}
+      - modifications: list of {date, action, ...} where action is "cancel" or
+        "reschedule" with new_date/new_time
+      - blackout_dates: list of date strings where no practices occur
+    """
+    from pytz import timezone as pytz_timezone
+    tz = pytz_timezone(config.get("timezone", TIMEZONE))
+    practices_cfg = config.get("practices", {})
+    events = []
+
+    for team_name, pdata in practices_cfg.items():
+        blackout = set(pdata.get("blackout_dates", []))
+        mods = {m["date"]: m for m in pdata.get("modifications", [])}
+
+        for entry in pdata.get("adhoc", []):
+            d = entry["date"]
+            if d in blackout:
+                continue
+
+            mod = mods.get(d)
+            if mod and mod.get("action") == "cancel":
+                continue
+
+            actual_date = d
+            actual_time = entry.get("time")
+            if mod and mod.get("action") == "reschedule":
+                actual_date = mod.get("new_date", d)
+                actual_time = mod.get("new_time", actual_time)
+
+            title = entry.get("title", f"{team_name} Practice")
+            location = entry.get("location")
+            duration = entry.get("duration_minutes", 90)
+
+            try:
+                dt = datetime.strptime(actual_date, "%Y-%m-%d")
+            except ValueError:
+                print(f"  WARNING: Invalid practice date '{actual_date}' for {team_name}")
+                continue
+
+            practice_time = None
+            is_allday = True
+            if actual_time:
+                try:
+                    practice_time = datetime.strptime(actual_time, "%I:%M %p")
+                    is_allday = False
+                except ValueError:
+                    try:
+                        practice_time = datetime.strptime(actual_time, "%H:%M")
+                        is_allday = False
+                    except ValueError:
+                        pass
+
+            events.append({
+                "title": title,
+                "date": dt,
+                "time": practice_time,
+                "is_allday": is_allday,
+                "home_away": "",
+                "opponent": None,
+                "location": location,
+                "field_name": location,
+                "address": None,
+                "event_name": "Practice",
+                "event_url": None,
+                "team_name": team_name,
+                "team_url": None,
+                "game_url": None,
+                "is_practice": True,
+                "duration_minutes": duration,
+            })
+
+    return events
+
+
+# ---------------------------------------------------------------------------
+# Notices
+# ---------------------------------------------------------------------------
+
+def get_active_notices(config, event_date):
+    """Return list of notice messages active for a given date."""
+    notices = config.get("notices", [])
+    active = []
+    if isinstance(event_date, datetime):
+        check_date = event_date.date()
+    elif isinstance(event_date, date):
+        check_date = event_date
+    else:
+        return active
+
+    for notice in notices:
+        try:
+            from_date = datetime.strptime(notice["applies_from"], "%Y-%m-%d").date()
+            to_date = datetime.strptime(notice["applies_to"], "%Y-%m-%d").date()
+        except (ValueError, KeyError):
+            continue
+        if from_date <= check_date <= to_date:
+            active.append(notice["message"])
+    return active
+
+
+# ---------------------------------------------------------------------------
+# ntfy.sh Notifications
+# ---------------------------------------------------------------------------
+
+NTFY_URL = "https://ntfy.sh"
+
+
+def load_previous_snapshot(path="calendars/.snapshot.json"):
+    """Load the previous calendar snapshot for change detection."""
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_snapshot(snapshot, path="calendars/.snapshot.json"):
+    """Save the current calendar snapshot."""
+    with open(path, "w") as f:
+        json.dump(snapshot, f, indent=2, default=str)
+
+
+def build_snapshot(games_by_team):
+    """Build a dict snapshot of games keyed by team, then by uid."""
+    snapshot = {}
+    for team_name, games in games_by_team.items():
+        team_events = {}
+        for g in games:
+            date_str = g["date"].strftime("%Y-%m-%d")
+            time_str = g["time"].strftime("%I:%M %p") if g.get("time") else "TBD"
+            uid = f"{date_str}-{g.get('opponent') or 'TBD'}-{time_str}"
+            team_events[uid] = {
+                "title": g["title"],
+                "date": date_str,
+                "time": time_str,
+                "location": g.get("location") or "",
+                "opponent": g.get("opponent") or "",
+            }
+        snapshot[team_name] = team_events
+    return snapshot
+
+
+def detect_changes(old_snapshot, new_snapshot):
+    """
+    Compare old and new snapshots. Returns a dict of team_name -> list of
+    change description strings.
+    """
+    changes = {}
+    all_teams = set(list(old_snapshot.keys()) + list(new_snapshot.keys()))
+
+    for team in all_teams:
+        old_events = old_snapshot.get(team, {})
+        new_events = new_snapshot.get(team, {})
+        team_changes = []
+
+        # New games
+        for uid in new_events:
+            if uid not in old_events:
+                e = new_events[uid]
+                team_changes.append(
+                    f"New: {e['title']} on {e['date']} at {e['time']}"
+                )
+
+        # Removed games
+        for uid in old_events:
+            if uid not in new_events:
+                e = old_events[uid]
+                team_changes.append(
+                    f"Removed: {e['title']} on {e['date']}"
+                )
+
+        # Changed games (same uid, different details)
+        for uid in new_events:
+            if uid in old_events:
+                old_e = old_events[uid]
+                new_e = new_events[uid]
+                diffs = []
+                if old_e.get("time") != new_e.get("time"):
+                    diffs.append(f"time {old_e['time']} -> {new_e['time']}")
+                if old_e.get("location") != new_e.get("location"):
+                    diffs.append(f"location -> {new_e['location']}")
+                if diffs:
+                    team_changes.append(
+                        f"Changed: {new_e['title']} on {new_e['date']} ({', '.join(diffs)})"
+                    )
+
+        if team_changes:
+            changes[team] = team_changes
+
+    return changes
+
+
+def send_ntfy(topic, title, message):
+    """Send a push notification via ntfy.sh."""
+    try:
+        resp = requests.post(
+            f"{NTFY_URL}/{topic}",
+            data=message.encode("utf-8"),
+            headers={
+                "Title": title,
+                "Priority": "default",
+                "Tags": "baseball",
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            print(f"  ntfy sent to {topic}: {title}")
+        else:
+            print(f"  ntfy error ({resp.status_code}): {resp.text[:200]}")
+    except requests.RequestException as e:
+        print(f"  ntfy send failed for {topic}: {e}")
+
+
+def notify_changes(changes, config):
+    """Send ntfy notifications for detected schedule changes."""
+    team_topics = {}
+    for team in config.get("teams", []):
+        if team.get("ntfy_topic"):
+            team_topics[team["team_name"]] = team["ntfy_topic"]
+
+    for team_name, change_list in changes.items():
+        topic = team_topics.get(team_name)
+        if not topic:
+            continue
+        body = "\n".join(change_list)
+        send_ntfy(topic, f"Schedule Update: {team_name}", body)
+
+
+# ---------------------------------------------------------------------------
 # Calendar generation
 # ---------------------------------------------------------------------------
 
@@ -405,6 +642,14 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         event = Event()
         event.add("summary", game["title"])
 
+        if game.get("location"):
+            event.add("location", vText(game["location"]))
+
+        # Duration: practices use their own duration, games default to 2h
+        duration_hrs = 2
+        if game.get("is_practice"):
+            duration_hrs = game.get("duration_minutes", 90) / 60
+
         if game["is_allday"]:
             event.add("dtstart", game["date"].date())
             event.add("dtend", game["date"].date() + timedelta(days=1))
@@ -414,19 +659,22 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
                 minute=game["time"].minute
             ))
             event.add("dtstart", start)
-            event.add("dtend", start + timedelta(hours=2))  # Assume 2-hour games
-
-        if game.get("location"):
-            event.add("location", vText(game["location"]))
+            event.add("dtend", start + timedelta(hours=duration_hrs))
 
         # Description
         desc_parts = []
-        if game.get("event_name"):
+        if game.get("event_name") and game["event_name"] != "Practice":
             desc_parts.append(f"Tournament: {game['event_name']}")
         if game.get("event_url"):
             desc_parts.append(f"Event: {game['event_url']}")
         if game.get("team_url"):
             desc_parts.append(f"Team: {game['team_url']}")
+
+        # Append active notices
+        active_notices = get_active_notices(config, game["date"])
+        for notice in active_notices:
+            desc_parts.append(notice)
+
         event.add("description", "\n".join(desc_parts))
 
         # Unique ID
@@ -733,16 +981,36 @@ def main():
             print(f"  Waiting {REQUEST_DELAY}s before next request...")
             time.sleep(REQUEST_DELAY)
 
-    print(f"\nTotal games found: {len(all_games)}")
+    # Add practice events from config
+    practice_events = build_practice_events(config)
+    if practice_events:
+        print(f"Added {len(practice_events)} practice events from config")
+        all_games.extend(practice_events)
+
+    print(f"\nTotal events: {len(all_games)} (games + practices)")
 
     if not all_games:
-        print("WARNING: No games found. Writing empty calendars.")
+        print("WARNING: No events found. Writing empty calendars.")
 
     # Group games by team and write per-team ICS files
     os.makedirs("calendars", exist_ok=True)
     games_by_team = {}
     for game in all_games:
         games_by_team.setdefault(game["team_name"], []).append(game)
+
+    # Change detection and ntfy notifications
+    old_snapshot = load_previous_snapshot()
+    new_snapshot = build_snapshot(games_by_team)
+    changes = detect_changes(old_snapshot, new_snapshot)
+    if changes:
+        print("\nSchedule changes detected:")
+        for team_name, change_list in changes.items():
+            for c in change_list:
+                print(f"  [{team_name}] {c}")
+        notify_changes(changes, config)
+    else:
+        print("\nNo schedule changes detected.")
+    save_snapshot(new_snapshot)
 
     for tname, tgames in games_by_team.items():
         cal = make_calendar(tgames, config, cal_name=tname)

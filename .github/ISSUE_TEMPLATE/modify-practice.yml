@@ -1,0 +1,47 @@
+name: Modify Practice
+description: Change the time, location, or date of a scheduled practice
+title: "[Practice] Modify: "
+labels: ["practice-change"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: original_date
+    attributes:
+      label: Original Date
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-15"
+    validations:
+      required: true
+  - type: input
+    id: new_date
+    attributes:
+      label: New Date (leave blank if unchanged)
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-16"
+    validations:
+      required: false
+  - type: input
+    id: new_time
+    attributes:
+      label: New Time (leave blank if unchanged)
+      description: "Format: H:MM AM/PM"
+      placeholder: "6:00 PM"
+    validations:
+      required: false
+  - type: input
+    id: new_location
+    attributes:
+      label: New Location (leave blank if unchanged)
+      placeholder: "Cunningham Park Field 3"
+    validations:
+      required: false
