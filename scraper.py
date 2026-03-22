@@ -960,7 +960,7 @@ def generate_index_html(all_games, config):
         <h2>FAQ</h2>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">How often does the calendar update?</summary>
-            <p style="margin:8px 0 0 0; color:#555;">The schedule is copied from Perfect Game twice daily (8 AM and 8 PM ET). Your calendar app may take an additional few hours to pull the latest file &mdash; most apps refresh subscriptions every 12&ndash;24 hours.</p>
+            <p style="margin:8px 0 0 0; color:#555;">The schedule is copied from Perfect Game automatically. Your calendar app may take a few hours to pull the latest file &mdash; most apps refresh subscriptions every 12&ndash;24 hours.</p>
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">What triggers a push notification?</summary>
