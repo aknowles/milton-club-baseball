@@ -881,7 +881,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
             # Show snack tag on first game of a double-header day
             snack_tag = ""
-            if date_key not in snack_dates_shown:
+            if snack_signup_enabled and date_key not in snack_dates_shown:
+                snack_families = get_snack_families(config, team_name, g["date"])
+                if snack_families:
+                    snack_tag = f'<span class="snack-tag">Snacks: {", ".join(snack_families)}</span>'
+                else:
+                    snack_tag = '<span class="snack-tag snack-needed">Needs snacks</span>'
+                snack_dates_shown.add(date_key)
+            elif not snack_signup_enabled and date_key not in snack_dates_shown:
                 snack_families = get_snack_families(config, team_name, g["date"])
                 if snack_families:
                     snack_tag = f'<span class="snack-tag">Snacks: {", ".join(snack_families)}</span>'
@@ -960,8 +967,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     </div>"""
             snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
 
+        # Extract org and age group from team name (e.g. "MDB Knights 11U Gold")
+        age_match = re.search(r"\b(\d+U)\b", team_name, re.IGNORECASE)
+        team_age = age_match.group(1) if age_match else ""
+        team_org = team_name[:age_match.start()].strip() if age_match else team_name
+
         team_sections += f"""
-        <div class="grade-section">
+        <div class="grade-section" data-team="{team_name}" data-org="{team_org}" data-age="{team_age}">
             <button class="collapsible" onclick="toggleSection(this)">
                 <div>
                     <span class="grade-title">{team_name}</span>
@@ -1066,6 +1078,11 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             font-size: 11px;
             margin-left: 8px;
         }}
+        .snack-needed {{
+            background: transparent;
+            color: #999;
+            border: 1px dashed #ccc;
+        }}
 
         .grade-section {{ margin-bottom: 12px; }}
         .collapsible {{
@@ -1123,6 +1140,40 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             margin-bottom: 10px;
         }}
 
+        .filter-bar {{
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            align-items: center;
+        }}
+        .filter-group {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
+        .filter-group label {{
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+        }}
+        .filter-group select {{
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            background: white;
+        }}
+        .filter-clear {{
+            font-size: 12px;
+            color: #1e6b3a;
+            cursor: pointer;
+            text-decoration: underline;
+            background: none;
+            border: none;
+            padding: 0;
+        }}
+
         .instructions {{
             background: white;
             border-radius: 12px;
@@ -1159,6 +1210,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
     <h2>Team Schedules</h2>
     <p style="color: #666; font-size: 14px;">Click a team to subscribe to their calendar or see upcoming games.</p>
+
+    <div class="filter-bar" id="filter-bar"></div>
+
     {team_sections}
 
     <div class="instructions">
@@ -1268,6 +1322,73 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const el = document.getElementById(pickerId);
             if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
         }}
+
+        // --- Filters (persisted in localStorage) ---
+        (function() {{
+            const sections = document.querySelectorAll('.grade-section[data-team]');
+            const orgs = [...new Set([...sections].map(s => s.dataset.org).filter(Boolean))].sort();
+            const ages = [...new Set([...sections].map(s => s.dataset.age).filter(Boolean))].sort(
+                (a, b) => parseInt(a) - parseInt(b)
+            );
+            const teamNames = [...new Set([...sections].map(s => s.dataset.team).filter(Boolean))].sort();
+
+            // Only show filter bar if there's more than one option to filter
+            if (orgs.length + ages.length + teamNames.length <= 1) return;
+
+            const bar = document.getElementById('filter-bar');
+            if (!bar) return;
+
+            function makeSelect(id, label, options) {{
+                const saved = localStorage.getItem('mcb_filter_' + id) || '';
+                let html = '<div class="filter-group"><label>' + label + ':</label><select id="filter-' + id + '">';
+                html += '<option value="">All</option>';
+                options.forEach(function(o) {{
+                    html += '<option value="' + o + '"' + (o === saved ? ' selected' : '') + '>' + o + '</option>';
+                }});
+                html += '</select></div>';
+                return html;
+            }}
+
+            let barHtml = '';
+            if (orgs.length > 1) barHtml += makeSelect('org', 'Organization', orgs);
+            if (ages.length > 1) barHtml += makeSelect('age', 'Age Group', ages);
+            if (teamNames.length > 1) barHtml += makeSelect('team', 'Team', teamNames);
+            barHtml += '<button class="filter-clear" onclick="clearFilters()">Clear filters</button>';
+            bar.innerHTML = barHtml;
+
+            function applyFilters() {{
+                const org = document.getElementById('filter-org');
+                const age = document.getElementById('filter-age');
+                const team = document.getElementById('filter-team');
+                const orgVal = org ? org.value : '';
+                const ageVal = age ? age.value : '';
+                const teamVal = team ? team.value : '';
+
+                localStorage.setItem('mcb_filter_org', orgVal);
+                localStorage.setItem('mcb_filter_age', ageVal);
+                localStorage.setItem('mcb_filter_team', teamVal);
+
+                sections.forEach(function(s) {{
+                    let show = true;
+                    if (orgVal && s.dataset.org !== orgVal) show = false;
+                    if (ageVal && s.dataset.age !== ageVal) show = false;
+                    if (teamVal && s.dataset.team !== teamVal) show = false;
+                    s.style.display = show ? '' : 'none';
+                }});
+            }}
+
+            bar.addEventListener('change', applyFilters);
+            window.clearFilters = function() {{
+                bar.querySelectorAll('select').forEach(function(sel) {{ sel.value = ''; }});
+                localStorage.removeItem('mcb_filter_org');
+                localStorage.removeItem('mcb_filter_age');
+                localStorage.removeItem('mcb_filter_team');
+                sections.forEach(function(s) {{ s.style.display = ''; }});
+            }};
+
+            // Apply saved filters on load
+            applyFilters();
+        }})();
 
         function submitSnackSignup(pickerId, teamName) {{
             const picker = document.getElementById(pickerId);
