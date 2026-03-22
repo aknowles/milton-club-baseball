@@ -43,7 +43,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          git add calendars/ index.html calendars/.snapshot.json
+          git add calendars/ index.html calendars/.snapshot.json .github/ISSUE_TEMPLATE/snack-signup.yml
           git diff --cached --quiet && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
           git reset HEAD
 
@@ -52,7 +52,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add calendars/ index.html calendars/.snapshot.json
+          git add calendars/ index.html calendars/.snapshot.json .github/ISSUE_TEMPLATE/snack-signup.yml
           git commit -m "Update calendar $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
 

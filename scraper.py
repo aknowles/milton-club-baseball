@@ -737,6 +737,66 @@ def save_rosters(rosters_by_team, path="calendars/rosters.json"):
     print(f"Wrote {path}")
 
 
+def generate_snack_signup_template(rosters_by_team, config):
+    """Generate the snack-signup issue template with family last names from rosters."""
+    # Collect unique last names across all teams
+    all_families = set()
+    for team_name, players in rosters_by_team.items():
+        for p in players:
+            name = p.get("name", "").strip()
+            if name:
+                last = name.split()[-1]
+                all_families.add(last)
+
+    team_names = [t["team_name"] for t in config.get("teams", [])]
+    family_list = sorted(all_families)
+    if not family_list:
+        print("No roster names found - skipping snack signup template generation.")
+        return
+
+    team_options = "\n".join(f"        - {t}" for t in team_names)
+    family_options = "\n".join(f"        - {f}" for f in family_list)
+
+    template = f"""name: Snack Signup
+description: Sign up to bring snacks for a game day
+title: "[Snacks] Signup: "
+labels: ["snack-signup"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+{team_options}
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Game Date
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-12"
+    validations:
+      required: true
+  - type: dropdown
+    id: families
+    attributes:
+      label: Family Name(s)
+      description: Select all families signing up
+      multiple: true
+      options:
+{family_options}
+    validations:
+      required: true
+"""
+
+    path = ".github/ISSUE_TEMPLATE/snack-signup.yml"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(template)
+    print(f"Wrote {path} with {len(family_list)} family names")
+
+
 def team_slug(team_name):
     """Convert a team name to a URL-safe filename slug."""
     return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
@@ -1288,6 +1348,7 @@ def main():
     # Save rosters
     if rosters_by_team:
         save_rosters(rosters_by_team)
+        generate_snack_signup_template(rosters_by_team, config)
     else:
         print("No roster data found.")
 
