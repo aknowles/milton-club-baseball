@@ -823,7 +823,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     """Generate an index.html for GitHub Pages with calendar subscribe links."""
     rosters_by_team = rosters_by_team or {}
     base_url = config.get("base_url", "")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M EST")
+    from pytz import timezone as pytz_timezone
+    tz = pytz_timezone(config.get("timezone", TIMEZONE))
+    now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z")
 
     # Group games by team
     teams = {}
