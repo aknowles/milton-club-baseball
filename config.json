@@ -4,25 +4,29 @@
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270150&team=1019769&Year=2026",
       "team_name": "MDB Knights 11U Gold",
       "year": 2026,
-      "ntfy_topic": "mdb-knights-11u-gold"
+      "ntfy_topic": "mdb-knights-11u-gold",
+      "snack_signup": false
     },
     {
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270162&team=1019779&Year=2026",
       "team_name": "MDB Knights 14U Blue",
       "year": 2026,
-      "ntfy_topic": "mdb-knights-14u-blue"
+      "ntfy_topic": "mdb-knights-14u-blue",
+      "snack_signup": false
     },
     {
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270151&team=1019770&Year=2026",
       "team_name": "MDB Knights 11U Blue",
       "year": 2026,
-      "ntfy_topic": "mdb-knights-11u-blue"
+      "ntfy_topic": "mdb-knights-11u-blue",
+      "snack_signup": false
     },
     {
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=76990&orgteamid=272240&team=1050136&Year=2026",
       "team_name": "Braintree Bandits 11U Mercado",
       "year": 2026,
-      "ntfy_topic": "braintree-bandits-11u-mercado"
+      "ntfy_topic": "braintree-bandits-11u-mercado",
+      "snack_signup": true
     }
   ],
   "base_url": "https://aknowles.github.io/milton-club-baseball",

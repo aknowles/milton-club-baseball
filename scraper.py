@@ -862,6 +862,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             teams[name] = []
         teams[name].append(game)
 
+    # Build lookup for team config
+    team_configs = {t["team_name"]: t for t in config.get("teams", [])}
+
     # Build team sections
     team_sections = ""
     for team_name, games in sorted(teams.items()):
@@ -903,55 +906,59 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
-        # Build snack signup picker (always shown; checkboxes when roster available)
+        # Build snack signup picker (only for teams with snack_signup enabled)
+        snack_signup_enabled = team_configs.get(team_name, {}).get("snack_signup", False)
+        snack_button_html = ""
+        snack_picker_html = ""
         picker_id = f"snack-picker-{slug}"
-        family_names = sorted(set(
-            p.get("name", "").strip().split()[-1]
-            for p in team_roster
-            if p.get("name", "").strip()
-        ))
-        cbs_html = ""
-        if family_names:
-            cbs = ""
-            for fam in family_names:
-                cbs += f"""
-                        <label style="display:inline-block; margin:3px 10px 3px 0; cursor:pointer;">
-                            <input type="checkbox" class="snack-cb" data-picker="{picker_id}" value="{fam}"> {fam}
-                        </label>"""
-            cbs_html = f"""
-                    <div style="margin:6px 0; font-size:13px;">
-                        <label style="font-size:12px; color:#555;">Family:</label><br>
-                        {cbs}
+        if snack_signup_enabled:
+            family_names = sorted(set(
+                p.get("name", "").strip().split()[-1]
+                for p in team_roster
+                if p.get("name", "").strip()
+            ))
+            cbs_html = ""
+            if family_names:
+                cbs = ""
+                for fam in family_names:
+                    cbs += f"""
+                            <label style="display:inline-block; margin:3px 10px 3px 0; cursor:pointer;">
+                                <input type="checkbox" class="snack-cb" data-picker="{picker_id}" value="{fam}"> {fam}
+                            </label>"""
+                cbs_html = f"""
+                        <div style="margin:6px 0; font-size:13px;">
+                            <label style="font-size:12px; color:#555;">Family:</label><br>
+                            {cbs}
+                        </div>"""
+
+            date_options = ""
+            seen_dates = set()
+            for g in upcoming:
+                d = g["date"].strftime("%Y-%m-%d")
+                if d not in seen_dates:
+                    label = g["date"].strftime("%b %d")
+                    date_options += f'<option value="{d}">{label}</option>'
+                    seen_dates.add(d)
+
+            family_input_label = "Other (not listed above):" if family_names else "Family Name(s):"
+            snack_picker_html = f"""
+                    <div class="snack-picker" id="{picker_id}" style="display:none; background:#fef9f0; border:1px solid #e67e22; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
+                        <strong style="font-size:13px;">Snack Signup</strong>
+                        <div style="margin:6px 0;">
+                            <label style="font-size:12px; color:#555;">Game Date:</label>
+                            <select class="snack-date" data-picker="{picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
+                                <option value="">Select date...</option>
+                                {date_options}
+                            </select>
+                        </div>
+                        {cbs_html}
+                        <div style="margin:6px 0; font-size:13px;">
+                            <label style="font-size:12px; color:#555;">{family_input_label}</label><br>
+                            <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
+                        </div>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
                     </div>"""
-
-        date_options = ""
-        seen_dates = set()
-        for g in upcoming:
-            d = g["date"].strftime("%Y-%m-%d")
-            if d not in seen_dates:
-                label = g["date"].strftime("%b %d")
-                date_options += f'<option value="{d}">{label}</option>'
-                seen_dates.add(d)
-
-        family_input_label = "Other (not listed above):" if family_names else "Family Name(s):"
-        snack_picker_html = f"""
-                <div class="snack-picker" id="{picker_id}" style="display:none; background:#fef9f0; border:1px solid #e67e22; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
-                    <strong style="font-size:13px;">Snack Signup</strong>
-                    <div style="margin:6px 0;">
-                        <label style="font-size:12px; color:#555;">Game Date:</label>
-                        <select class="snack-date" data-picker="{picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
-                            <option value="">Select date...</option>
-                            {date_options}
-                        </select>
-                    </div>
-                    {cbs_html}
-                    <div style="margin:6px 0; font-size:13px;">
-                        <label style="font-size:12px; color:#555;">{family_input_label}</label><br>
-                        <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
-                    </div>
-                    <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
-                </div>"""
-        snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
+            snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
 
         team_sections += f"""
         <div class="grade-section">
