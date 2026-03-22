@@ -34,6 +34,7 @@ body:
     id: duration
     attributes:
       label: Duration (minutes)
+      value: "90"
       placeholder: "90"
     validations:
       required: false
