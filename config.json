@@ -29,7 +29,14 @@
   "timezone": "US/Eastern",
   "practices": {
     "MDB Knights 11U Gold": {
-      "adhoc": [],
+      "adhoc": [
+        {
+          "date": "2026-03-26",
+          "time": "6:00 PM",
+          "location": "Matt Duffy Baseball Academy, 293 Libbey Pkwy unit 150, Weymouth, ma",
+          "title": "Practice"
+        }
+      ],
       "modifications": [],
       "blackout_dates": []
     },
