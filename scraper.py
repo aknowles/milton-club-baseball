@@ -737,66 +737,6 @@ def save_rosters(rosters_by_team, path="calendars/rosters.json"):
     print(f"Wrote {path}")
 
 
-def generate_snack_signup_template(rosters_by_team, config):
-    """Generate the snack-signup issue template with family last names from rosters."""
-    # Collect unique last names across all teams
-    all_families = set()
-    for team_name, players in rosters_by_team.items():
-        for p in players:
-            name = p.get("name", "").strip()
-            if name:
-                last = name.split()[-1]
-                all_families.add(last)
-
-    team_names = [t["team_name"] for t in config.get("teams", [])]
-    family_list = sorted(all_families)
-    if not family_list:
-        print("No roster names found - skipping snack signup template generation.")
-        return
-
-    team_options = "\n".join(f"        - {t}" for t in team_names)
-    family_options = "\n".join(f"        - {f}" for f in family_list)
-
-    template = f"""name: Snack Signup
-description: Sign up to bring snacks for a game day
-title: "[Snacks] Signup: "
-labels: ["snack-signup"]
-body:
-  - type: dropdown
-    id: team
-    attributes:
-      label: Team
-      options:
-{team_options}
-    validations:
-      required: true
-  - type: input
-    id: date
-    attributes:
-      label: Game Date
-      description: "Format: YYYY-MM-DD"
-      placeholder: "2026-04-12"
-    validations:
-      required: true
-  - type: dropdown
-    id: families
-    attributes:
-      label: Family Name(s)
-      description: Select all families signing up
-      multiple: true
-      options:
-{family_options}
-    validations:
-      required: true
-"""
-
-    path = ".github/ISSUE_TEMPLATE/snack-signup.yml"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        f.write(template)
-    print(f"Wrote {path} with {len(family_list)} family names")
-
-
 def team_slug(team_name):
     """Convert a team name to a URL-safe filename slug."""
     return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
@@ -967,6 +907,52 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
+        # Build snack signup family checkboxes from roster
+        snack_picker_html = ""
+        family_names = sorted(set(
+            p.get("name", "").strip().split()[-1]
+            for p in team_roster
+            if p.get("name", "").strip()
+        ))
+        if family_names:
+            picker_id = f"snack-picker-{slug}"
+            cbs = ""
+            for fam in family_names:
+                cb_id = f"snack-{slug}-{fam.lower()}"
+                cbs += f"""
+                        <label style="display:inline-block; margin:3px 10px 3px 0; cursor:pointer;">
+                            <input type="checkbox" class="snack-cb" data-picker="{picker_id}" value="{fam}"> {fam}
+                        </label>"""
+            # Build game date options from upcoming games
+            date_options = ""
+            seen_dates = set()
+            for g in upcoming:
+                d = g["date"].strftime("%Y-%m-%d")
+                if d not in seen_dates:
+                    label = g["date"].strftime("%b %d")
+                    date_options += f'<option value="{d}">{label}</option>'
+                    seen_dates.add(d)
+            snack_picker_html = f"""
+                <div class="snack-picker" id="{picker_id}" style="display:none; background:#fef9f0; border:1px solid #e67e22; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
+                    <strong style="font-size:13px;">Snack Signup</strong>
+                    <div style="margin:6px 0;">
+                        <label style="font-size:12px; color:#555;">Game Date:</label>
+                        <select class="snack-date" data-picker="{picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
+                            <option value="">Select date...</option>
+                            {date_options}
+                        </select>
+                    </div>
+                    <div style="margin:6px 0; font-size:13px;">
+                        <label style="font-size:12px; color:#555;">Family:</label><br>
+                        {cbs}
+                    </div>
+                    <div style="margin:6px 0; font-size:13px;">
+                        <label style="font-size:12px; color:#555;">Other (not listed above):</label><br>
+                        <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
+                    </div>
+                    <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
+                </div>"""
+
         team_sections += f"""
         <div class="grade-section">
             <button class="collapsible" onclick="toggleSection(this)">
@@ -985,8 +971,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-{slug}')">Sign Up for Snacks</button>
                 </div>
+                {snack_picker_html}
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
@@ -1270,6 +1257,41 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const content = btn.nextElementSibling;
             content.classList.toggle('open');
         }}
+
+        function toggleSnackPicker(pickerId) {{
+            const el = document.getElementById(pickerId);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }}
+
+        function submitSnackSignup(pickerId, teamName) {{
+            const picker = document.getElementById(pickerId);
+            const dateSelect = picker.querySelector('.snack-date');
+            const dateVal = dateSelect ? dateSelect.value : '';
+            if (!dateVal) {{ alert('Please select a game date.'); return; }}
+
+            const checked = picker.querySelectorAll('.snack-cb:checked');
+            const families = Array.from(checked).map(cb => cb.value);
+
+            const otherInput = picker.querySelector('.snack-other');
+            if (otherInput && otherInput.value.trim()) {{
+                otherInput.value.split(',').forEach(f => {{
+                    const trimmed = f.trim();
+                    if (trimmed) families.push(trimmed);
+                }});
+            }}
+
+            if (families.length === 0) {{ alert('Please select at least one family.'); return; }}
+
+            const familyStr = families.join(', ');
+            const title = encodeURIComponent('[Snacks] Signup: ' + familyStr + ' - ' + dateVal);
+            const body = encodeURIComponent(
+                '### Team\\n\\n' + teamName +
+                '\\n\\n### Game Date\\n\\n' + dateVal +
+                '\\n\\n### Family Name(s)\\n\\n' + familyStr
+            );
+            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-signup&title=' + title + '&body=' + body;
+            window.open(url, '_blank');
+        }}
     </script>
 </body>
 </html>"""
@@ -1348,7 +1370,6 @@ def main():
     # Save rosters
     if rosters_by_team:
         save_rosters(rosters_by_team)
-        generate_snack_signup_template(rosters_by_team, config)
     else:
         print("No roster data found.")
 
