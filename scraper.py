@@ -914,33 +914,38 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
-        # Build snack signup family checkboxes from roster
-        snack_picker_html = ""
-        snack_button_html = ""
+        # Build snack signup picker (always shown; checkboxes only when roster available)
+        picker_id = f"snack-picker-{slug}"
         family_names = sorted(set(
             p.get("name", "").strip().split()[-1]
             for p in team_roster
             if p.get("name", "").strip()
         ))
+        cbs_html = ""
         if family_names:
-            picker_id = f"snack-picker-{slug}"
             cbs = ""
             for fam in family_names:
-                cb_id = f"snack-{slug}-{fam.lower()}"
                 cbs += f"""
                         <label style="display:inline-block; margin:3px 10px 3px 0; cursor:pointer;">
                             <input type="checkbox" class="snack-cb" data-picker="{picker_id}" value="{fam}"> {fam}
                         </label>"""
-            # Build game date options from upcoming games
-            date_options = ""
-            seen_dates = set()
-            for g in upcoming:
-                d = g["date"].strftime("%Y-%m-%d")
-                if d not in seen_dates:
-                    label = g["date"].strftime("%b %d")
-                    date_options += f'<option value="{d}">{label}</option>'
-                    seen_dates.add(d)
-            snack_picker_html = f"""
+            cbs_html = f"""
+                    <div style="margin:6px 0; font-size:13px;">
+                        <label style="font-size:12px; color:#555;">Family:</label><br>
+                        {cbs}
+                    </div>"""
+
+        date_options = ""
+        seen_dates = set()
+        for g in upcoming:
+            d = g["date"].strftime("%Y-%m-%d")
+            if d not in seen_dates:
+                label = g["date"].strftime("%b %d")
+                date_options += f'<option value="{d}">{label}</option>'
+                seen_dates.add(d)
+
+        family_input_label = "Other (not listed above):" if family_names else "Family Name(s):"
+        snack_picker_html = f"""
                 <div class="snack-picker" id="{picker_id}" style="display:none; background:#fef9f0; border:1px solid #e67e22; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
                     <strong style="font-size:13px;">Snack Signup</strong>
                     <div style="margin:6px 0;">
@@ -950,19 +955,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             {date_options}
                         </select>
                     </div>
+                    {cbs_html}
                     <div style="margin:6px 0; font-size:13px;">
-                        <label style="font-size:12px; color:#555;">Family:</label><br>
-                        {cbs}
-                    </div>
-                    <div style="margin:6px 0; font-size:13px;">
-                        <label style="font-size:12px; color:#555;">Other (not listed above):</label><br>
+                        <label style="font-size:12px; color:#555;">{family_input_label}</label><br>
                         <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
                     </div>
                     <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
                 </div>"""
-            snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
-        else:
-            snack_button_html = '<a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>'
+        snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
 
         team_sections += f"""
         <div class="grade-section">
