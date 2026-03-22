@@ -362,15 +362,35 @@ def parse_roster(html, team_name):
     soup = BeautifulSoup(html, "html.parser")
     players = []
 
-    # Find the rgRoster table (same Telerik RadGrid pattern as rgSchedule)
+    # Find the roster table — try multiple patterns used by PG
     roster_table = soup.find("table", id=re.compile(r"rgRoster.*_ctl00$", re.I))
     if not roster_table:
         roster_table = soup.find("table", id=re.compile(r"rgRoster", re.I))
     if not roster_table:
-        debug_log(f"Could not find rgRoster table for {team_name}")
+        # Try any table with "Roster" in an ancestor's text or nearby heading
+        for heading in soup.find_all(["h2", "h3", "h4", "span", "div", "label"]):
+            txt = heading.get_text(strip=True).lower()
+            if "roster" in txt and "schedule" not in txt:
+                roster_table = heading.find_next("table")
+                if roster_table:
+                    print(f"  [roster] Found roster table via heading '{heading.get_text(strip=True)}' for {team_name}")
+                    break
+    if not roster_table:
+        # Try any RadGrid table that isn't the schedule
+        for tbl in soup.find_all("table", id=re.compile(r"_ctl00$", re.I)):
+            tid = tbl.get("id", "")
+            if "schedule" not in tid.lower() and "event" not in tid.lower():
+                roster_table = tbl
+                print(f"  [roster] Using fallback RadGrid table for {team_name}: id='{tid}'")
+                break
+    if not roster_table:
+        # Log all table IDs to help debug
+        all_tables = soup.find_all("table", id=True)
+        table_ids = [t.get("id", "") for t in all_tables]
+        print(f"  [roster] No roster table found for {team_name}. Table IDs on page: {table_ids}")
         return players
 
-    debug_log(f"Found rgRoster table: id='{roster_table.get('id', '')}'")
+    print(f"  [roster] Found roster table for {team_name}: id='{roster_table.get('id', '')}'")
 
     # Find header row to determine column mapping
     header_row = roster_table.find("tr", class_=re.compile(r"rgHeader", re.I))
@@ -877,44 +897,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         if games and games[0].get("event_name"):
             event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
 
-        # Build roster HTML for this team
-        roster_html = ""
+        # Get roster data for snack picker (not displayed on page)
         team_roster = rosters_by_team.get(team_name, [])
-        if team_roster:
-            roster_rows = ""
-            for p in team_roster:
-                num = p.get("number", "")
-                name = p.get("name", "")
-                pos = p.get("position", "")
-                bt = p.get("bats_throws", "")
-                roster_rows += f"""
-                        <tr style="border-bottom:1px solid #ddd;">
-                            <td style="padding:4px 8px; text-align:center;">{num}</td>
-                            <td style="padding:4px 8px;">{name}</td>
-                            <td style="padding:4px 8px; text-align:center;">{pos}</td>
-                            <td style="padding:4px 8px; text-align:center;">{bt}</td>
-                        </tr>"""
-            roster_html = f"""
-                <div class="roster-section" style="margin-top:12px;">
-                    <strong style="font-size:14px;">Roster</strong>
-                    <table style="width:100%; border-collapse:collapse; margin-top:6px; font-size:13px;">
-                        <thead>
-                            <tr style="border-bottom:2px solid #1e6b3a; text-align:left;">
-                                <th style="padding:4px 8px; width:40px;">#</th>
-                                <th style="padding:4px 8px;">Name</th>
-                                <th style="padding:4px 8px; width:50px;">Pos</th>
-                                <th style="padding:4px 8px; width:50px;">B/T</th>
-                            </tr>
-                        </thead>
-                        <tbody>{roster_rows}
-                        </tbody>
-                    </table>
-                </div>"""
 
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
-        # Build snack signup picker (always shown; checkboxes only when roster available)
+        # Build snack signup picker (always shown; checkboxes when roster available)
         picker_id = f"snack-picker-{slug}"
         family_names = sorted(set(
             p.get("name", "").strip().split()[-1]
@@ -988,7 +977,6 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
-                {roster_html}
             </div>
         </div>"""
 
@@ -1337,7 +1325,15 @@ def main():
             # Also scrape roster from the same page
             roster = parse_roster(html, name)
             if roster:
+                print(f"  Found {len(roster)} roster entries for {name}: {[p.get('name','?') for p in roster[:3]]}...")
                 rosters_by_team[name] = roster
+            else:
+                print(f"  No roster found on page for {name}")
+                # Save HTML for debugging roster parsing
+                debug_path = f"debug_roster_{team_slug(name)}.html"
+                with open(debug_path, "w") as df:
+                    df.write(html)
+                print(f"  Saved page HTML to {debug_path} for debugging")
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
             continue
