@@ -1378,11 +1378,21 @@ def main():
         print("\nNo schedule changes detected.")
     save_snapshot(new_snapshot)
 
-    # Save rosters
+    # Save rosters — fall back to previously published rosters from Pages
     if rosters_by_team:
         save_rosters(rosters_by_team)
     else:
-        print("No roster data found.")
+        print("No roster data scraped — loading previous rosters from Pages...")
+        try:
+            base_url = config.get("base_url", "")
+            if base_url:
+                resp = requests.get(f"{base_url}/calendars/rosters.json", timeout=10)
+                if resp.status_code == 200:
+                    rosters_by_team = resp.json()
+                    save_rosters(rosters_by_team)
+                    print(f"  Loaded {len(rosters_by_team)} team rosters from Pages")
+        except Exception as e:
+            print(f"  Could not fetch previous rosters: {e}")
 
     for tname, tgames in games_by_team.items():
         cal = make_calendar(tgames, config, cal_name=tname)

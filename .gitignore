@@ -10,4 +10,5 @@ debug_*.html
 # Generated output — served via GitHub Pages artifact, not committed
 calendars/*.ics
 calendars/.snapshot.json
+calendars/rosters.json
 index.html
