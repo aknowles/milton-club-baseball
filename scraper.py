@@ -760,6 +760,17 @@ def generate_index_html(all_games, config):
             </div>
         </div>"""
 
+    # Build ntfy topic rows for the notifications table
+    ntfy_rows = ""
+    for team_cfg in config.get("teams", []):
+        topic = team_cfg.get("ntfy_topic", "")
+        if topic:
+            ntfy_rows += f"""
+                <tr style="border-bottom:1px solid #ddd;">
+                    <td style="padding:8px 6px;">{team_cfg['team_name']}</td>
+                    <td style="padding:8px 6px;"><code>{topic}</code></td>
+                </tr>"""
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -922,6 +933,64 @@ def generate_index_html(all_games, config):
             <li><strong>Outlook:</strong> Add calendar &rarr; Subscribe from web</li>
         </ul>
         <p><strong>Tip:</strong> Calendars auto-update every 24 hours. Schedule data refreshes twice daily.</p>
+    </div>
+
+    <div class="instructions" style="margin-top: 16px;">
+        <h2>Push Notifications</h2>
+        <p>Get notified on your phone when games are added, removed, or changed (time/location updates).</p>
+        <ol>
+            <li>Install the free <a href="https://ntfy.sh" style="color:#1e6b3a; font-weight:600;">ntfy app</a> (<a href="https://apps.apple.com/us/app/ntfy/id1625396347" style="color:#1e6b3a;">iOS</a> / <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" style="color:#1e6b3a;">Android</a>)</li>
+            <li>Open the app and tap <strong>+</strong> to subscribe to a topic</li>
+            <li>Enter your team's topic from the table below</li>
+        </ol>
+        <table style="width:100%; border-collapse:collapse; margin-top:12px; font-size:14px;">
+            <thead>
+                <tr style="border-bottom:2px solid #1e6b3a; text-align:left;">
+                    <th style="padding:8px 6px;">Team</th>
+                    <th style="padding:8px 6px;">ntfy Topic</th>
+                </tr>
+            </thead>
+            <tbody>
+                {ntfy_rows}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="instructions" style="margin-top: 16px;">
+        <h2>FAQ</h2>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">How often does the calendar update?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">The schedule is scraped from Perfect Game twice daily (8 AM and 8 PM ET). Your calendar app may take an additional few hours to pull the latest file &mdash; most apps refresh subscriptions every 12&ndash;24 hours.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">What triggers a push notification?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Notifications are sent when Perfect Game data changes between runs: new games added, games removed, or time/location updates. Practice additions via GitHub Issues also trigger a calendar update on the next run.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">Why don't I see practices on the calendar?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Practices must be added to the schedule by a coach or admin (via GitHub Issues or directly in config.json). Only explicitly scheduled practices appear &mdash; there is no auto-generated weekly cadence.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">A game time or location looks wrong &mdash; what do I do?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">This calendar pulls directly from Perfect Game. If something looks off, check the <a href="https://www.perfectgame.org" style="color:#1e6b3a;">PG website</a> first &mdash; if it's wrong there, contact your tournament director. If PG is correct but the calendar is wrong, let your team admin know so they can investigate.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">Is ntfy.sh free? Is it private?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Yes, ntfy.sh is free and open-source. Topics are public by default &mdash; anyone who knows the topic name can subscribe. The topic names used here are specific enough that random discovery is unlikely, but notifications only contain schedule data (team names, dates, times, locations), not any personal information.</p>
+        </details>
+    </div>
+
+    <div class="instructions" style="margin-top: 16px; background: #fff8e1; border-left: 4px solid #f9a825;">
+        <h2 style="border:none; margin-top:0; color:#5d4037;">Disclaimer</h2>
+        <p style="font-size:13px; color:#555; line-height:1.6;">
+            This is an unofficial, volunteer-run tool. Schedule data is scraped from
+            <a href="https://www.perfectgame.org" style="color:#1e6b3a;">Perfect Game</a> and may
+            be delayed, incomplete, or occasionally incorrect. <strong>Always confirm game times and
+            locations with your coach or team admin before traveling.</strong> This site is not
+            affiliated with or endorsed by Perfect Game, MDB, or any league organization.
+            Notifications are provided on a best-effort basis &mdash; do not rely solely on push
+            alerts for schedule changes.
+        </p>
     </div>
 
     <p class="footer">
