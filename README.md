@@ -5,12 +5,11 @@ Automated calendar subscriptions for MDB Knights Perfect Game baseball schedules
 ## How It Works
 
 1. **GitHub Actions** runs twice daily (8 AM & 8 PM ET)
-2. **Scraper** fetches team schedules and rosters from [Perfect Game](https://www.perfectgame.org)
-3. **Calendar files** (per-team `.ics` in `calendars/`) and roster data are generated and committed
+2. **Scraper** fetches team schedules from [Perfect Game](https://www.perfectgame.org)
+3. **Calendar files** (per-team `.ics` in `calendars/`) are generated and committed
 4. **GitHub Pages** serves the calendar for subscription
 5. **ntfy.sh** sends push notifications when schedule changes are detected
 6. **Practices** from `config.json` are merged into team calendars
-7. **Snacks** signups from `config.json` are shown on game events and the index page
 
 ## Subscribe
 
@@ -126,14 +125,6 @@ When families are signed up for a game date:
 - The calendar event description includes a `Snacks: Smith, Johnson` line
 - The index page shows a snack tag next to the game (first game of the day for doubleheaders)
 
-## Rosters
-
-Player rosters are automatically scraped from each team's Perfect Game page alongside the schedule. The scraper looks for the `rgRoster` Telerik RadGrid table and extracts player name, number, position, and bats/throws info.
-
-- Roster data is saved to `calendars/rosters.json` on each run
-- Rosters are displayed in each team's section on the index page
-- No manual configuration needed — rosters come directly from Perfect Game
-
 ## Workflow Failure Notifications
 
 The workflow automatically creates a GitHub issue with the `workflow-failure` label when it fails.
@@ -173,12 +164,11 @@ python scraper.py
 .github/workflows/update-calendar.yml       # Main scraper + deploy workflow
 .github/workflows/process-practice-changes.yml  # Practice issue processing
 .github/ISSUE_TEMPLATE/                      # Issue templates for practice changes
-scraper.py                                   # Schedule + roster scraper + calendar generator
+scraper.py                                   # Schedule scraper + calendar generator
 process_practice_issue.py                    # Issue body parser for practice changes
 config.json                                  # Team, practice, notice, and snacks configuration
 calendars/                                   # Generated per-team .ics files
 calendars/.snapshot.json                     # Change detection snapshot (auto-managed)
-calendars/rosters.json                       # Scraped roster data (auto-managed)
 index.html                                   # Generated GitHub Pages site
 requirements.txt                             # Python dependencies
 ```
