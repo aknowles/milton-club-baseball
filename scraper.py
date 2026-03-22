@@ -352,6 +352,100 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
     }
 
 
+def parse_roster(html, team_name):
+    """
+    Parse the TEAM ROSTER section of a Perfect Game team page.
+
+    The roster is in a Telerik RadGrid with ID containing 'rgRoster'.
+    Returns a list of player dicts with keys like 'name', 'number', 'position'.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    players = []
+
+    # Find the rgRoster table (same Telerik RadGrid pattern as rgSchedule)
+    roster_table = soup.find("table", id=re.compile(r"rgRoster.*_ctl00$", re.I))
+    if not roster_table:
+        roster_table = soup.find("table", id=re.compile(r"rgRoster", re.I))
+    if not roster_table:
+        debug_log(f"Could not find rgRoster table for {team_name}")
+        return players
+
+    debug_log(f"Found rgRoster table: id='{roster_table.get('id', '')}'")
+
+    # Find header row to determine column mapping
+    header_row = roster_table.find("tr", class_=re.compile(r"rgHeader", re.I))
+    if not header_row:
+        thead = roster_table.find("thead")
+        if thead:
+            header_row = thead.find("tr")
+    col_map = {}
+    if header_row:
+        for idx, th in enumerate(header_row.find_all(["th", "td"])):
+            text = th.get_text(strip=True).lower()
+            if "name" in text or "player" in text:
+                col_map["name"] = idx
+            elif text in ("#", "no", "no.", "number", "jersey"):
+                col_map["number"] = idx
+            elif "pos" in text:
+                col_map["position"] = idx
+            elif "bat" in text or "b/t" in text:
+                col_map["bats_throws"] = idx
+            elif "throw" in text:
+                col_map["throws"] = idx
+            elif "grad" in text or "year" in text or "class" in text:
+                col_map["grad_year"] = idx
+        debug_log(f"Roster column map: {col_map}")
+
+    # Parse data rows
+    rows = roster_table.find_all("tr", class_=re.compile(r"rgRow|rgAltRow", re.I))
+    if not rows:
+        tbody = roster_table.find("tbody")
+        if tbody:
+            rows = tbody.find_all("tr")
+
+    for row in rows:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        cell_texts = [c.get_text(strip=True) for c in cells]
+
+        # Skip header-like or empty rows
+        if not any(cell_texts):
+            continue
+
+        player = {}
+        if col_map:
+            if "name" in col_map and col_map["name"] < len(cell_texts):
+                player["name"] = cell_texts[col_map["name"]]
+            if "number" in col_map and col_map["number"] < len(cell_texts):
+                player["number"] = cell_texts[col_map["number"]]
+            if "position" in col_map and col_map["position"] < len(cell_texts):
+                player["position"] = cell_texts[col_map["position"]]
+            if "bats_throws" in col_map and col_map["bats_throws"] < len(cell_texts):
+                player["bats_throws"] = cell_texts[col_map["bats_throws"]]
+            if "throws" in col_map and col_map["throws"] < len(cell_texts):
+                player["throws"] = cell_texts[col_map["throws"]]
+            if "grad_year" in col_map and col_map["grad_year"] < len(cell_texts):
+                player["grad_year"] = cell_texts[col_map["grad_year"]]
+        else:
+            # Fallback: guess based on cell count and content patterns
+            for i, text in enumerate(cell_texts):
+                if re.match(r"^\d{1,3}$", text) and "number" not in player:
+                    player["number"] = text
+                elif len(text) > 3 and re.search(r"[a-zA-Z]{2,}", text) and "name" not in player:
+                    player["name"] = text
+                elif text.upper() in ("P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF",
+                                       "OF", "IF", "DH", "UT", "RHP", "LHP", "MIF", "INF"):
+                    player["position"] = text
+
+        if player.get("name"):
+            players.append(player)
+            debug_log(f"  Roster: {player}")
+
+    print(f"  Found {len(players)} roster players for {team_name}")
+    return players
+
+
 def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
     """Extract the opponent name from the row cells."""
     # Strategy 1: Find cell right after "vs." or "@"
@@ -636,6 +730,13 @@ def notify_changes(changes, config):
 # Calendar generation
 # ---------------------------------------------------------------------------
 
+def save_rosters(rosters_by_team, path="calendars/rosters.json"):
+    """Save scraped roster data to a JSON file."""
+    with open(path, "w") as f:
+        json.dump(rosters_by_team, f, indent=2)
+    print(f"Wrote {path}")
+
+
 def team_slug(team_name):
     """Convert a team name to a URL-safe filename slug."""
     return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
@@ -718,8 +819,9 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 # Index HTML generation (matching ssbball style)
 # ---------------------------------------------------------------------------
 
-def generate_index_html(all_games, config):
+def generate_index_html(all_games, config, rosters_by_team=None):
     """Generate an index.html for GitHub Pages with calendar subscribe links."""
+    rosters_by_team = rosters_by_team or {}
     base_url = config.get("base_url", "")
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M EST")
 
@@ -766,6 +868,40 @@ def generate_index_html(all_games, config):
         if games and games[0].get("event_name"):
             event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
 
+        # Build roster HTML for this team
+        roster_html = ""
+        team_roster = rosters_by_team.get(team_name, [])
+        if team_roster:
+            roster_rows = ""
+            for p in team_roster:
+                num = p.get("number", "")
+                name = p.get("name", "")
+                pos = p.get("position", "")
+                bt = p.get("bats_throws", "")
+                roster_rows += f"""
+                        <tr style="border-bottom:1px solid #ddd;">
+                            <td style="padding:4px 8px; text-align:center;">{num}</td>
+                            <td style="padding:4px 8px;">{name}</td>
+                            <td style="padding:4px 8px; text-align:center;">{pos}</td>
+                            <td style="padding:4px 8px; text-align:center;">{bt}</td>
+                        </tr>"""
+            roster_html = f"""
+                <div class="roster-section" style="margin-top:12px;">
+                    <strong style="font-size:14px;">Roster</strong>
+                    <table style="width:100%; border-collapse:collapse; margin-top:6px; font-size:13px;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #1e6b3a; text-align:left;">
+                                <th style="padding:4px 8px; width:40px;">#</th>
+                                <th style="padding:4px 8px;">Name</th>
+                                <th style="padding:4px 8px; width:50px;">Pos</th>
+                                <th style="padding:4px 8px; width:50px;">B/T</th>
+                            </tr>
+                        </thead>
+                        <tbody>{roster_rows}
+                        </tbody>
+                    </table>
+                </div>"""
+
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
@@ -791,6 +927,7 @@ def generate_index_html(all_games, config):
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
+                {roster_html}
             </div>
         </div>"""
 
@@ -1079,6 +1216,7 @@ def main():
         sys.exit(1)
 
     all_games = []
+    rosters_by_team = {}
 
     for i, team in enumerate(teams):
         url = team["url"]
@@ -1089,6 +1227,11 @@ def main():
             html = fetch_page(url)
             games = parse_schedule(html, name, url)
             all_games.extend(games)
+
+            # Also scrape roster from the same page
+            roster = parse_roster(html, name)
+            if roster:
+                rosters_by_team[name] = roster
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
             continue
@@ -1129,6 +1272,12 @@ def main():
         print("\nNo schedule changes detected.")
     save_snapshot(new_snapshot)
 
+    # Save rosters
+    if rosters_by_team:
+        save_rosters(rosters_by_team)
+    else:
+        print("No roster data found.")
+
     for tname, tgames in games_by_team.items():
         cal = make_calendar(tgames, config, cal_name=tname)
         filename = f"calendars/{team_slug(tname)}.ics"
@@ -1137,7 +1286,7 @@ def main():
         print(f"Wrote {filename}")
 
     # Generate and write index.html
-    index_html = generate_index_html(all_games, config)
+    index_html = generate_index_html(all_games, config, rosters_by_team)
     with open("index.html", "w") as f:
         f.write(index_html)
     print("Wrote index.html")
