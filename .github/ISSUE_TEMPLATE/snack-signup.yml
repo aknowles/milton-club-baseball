@@ -1,0 +1,32 @@
+name: Snack Signup
+description: Sign up to bring snacks for a game day
+title: "[Snacks] Signup: "
+labels: ["snack-signup"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Game Date
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-12"
+    validations:
+      required: true
+  - type: input
+    id: families
+    attributes:
+      label: Family Name(s)
+      description: "Comma-separated if multiple families are signing up"
+      placeholder: "Smith, Johnson"
+    validations:
+      required: true
