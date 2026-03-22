@@ -925,6 +925,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
+                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
                 </div>
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
@@ -1002,6 +1003,16 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         }}
         .btn-primary {{ background: #1e6b3a; color: white; }}
         .btn-secondary {{ background: #1a1a2e; color: white; }}
+        .btn-snack {{ background: #e67e22; color: white; }}
+        .snack-tag {{
+            display: inline-block;
+            background: #e67e22;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+        }}
 
         .grade-section {{ margin-bottom: 12px; }}
         .collapsible {{
