@@ -968,7 +968,15 @@ def generate_index_html(all_games, config):
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">Why don't I see practices on the calendar?</summary>
-            <p style="margin:8px 0 0 0; color:#555;">Practices must be added to the schedule by a coach or admin (via GitHub Issues or directly in config.json). Only explicitly scheduled practices appear &mdash; there is no auto-generated weekly cadence.</p>
+            <p style="margin:8px 0 0 0; color:#555;">Practices must be added to the schedule by a coach or admin. Only explicitly scheduled practices appear &mdash; there is no auto-generated weekly cadence. If your coach has scheduled a practice and it's not showing up, give it up to 24 hours for your calendar app to refresh.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">How do I add, cancel, or change a practice?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Coaches and team admins can submit practice changes through our <a href="https://github.com/aknowles/milton-club-baseball/issues/new/choose" style="color:#1e6b3a;">GitHub Issues page</a>. Choose the appropriate template (Add Practice, Cancel Practice, or Modify Practice), fill in the details, and submit. A repo admin will review and approve the change, and it will automatically update the calendar.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">What kinds of events can be added as practices?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Anything the team does outside of scheduled games: team practices, bullpen sessions, hitting sessions, fielding clinics, team meetings, etc. Each entry includes a date, time, duration, location, and optional custom title.</p>
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">A game time or location looks wrong &mdash; what do I do?</summary>
