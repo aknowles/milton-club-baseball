@@ -177,8 +177,9 @@
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics">Subscribe</a>
                     <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-braintree-bandits-11u-mercado')">Sign Up for Snacks</button>
                 </div>
+                
                 <div class="upcoming-games">
                     
                 <div class="game-row">
@@ -237,8 +238,9 @@
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics">Subscribe</a>
                     <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-mdb-knights-11u-blue')">Sign Up for Snacks</button>
                 </div>
+                
                 <div class="upcoming-games">
                     
                 <div class="game-row">
@@ -297,8 +299,9 @@
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics">Subscribe</a>
                     <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-mdb-knights-11u-gold')">Sign Up for Snacks</button>
                 </div>
+                
                 <div class="upcoming-games">
                     
                 <div class="game-row">
@@ -357,8 +360,9 @@
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics">Subscribe</a>
                     <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-mdb-knights-14u-blue')">Sign Up for Snacks</button>
                 </div>
+                
                 <div class="upcoming-games">
                     
                 <div class="game-row">
@@ -501,7 +505,7 @@
     </div>
 
     <p class="footer">
-        Last updated: 2026-03-22 16:39 EDT<br>
+        Last updated: 2026-03-22 17:08 EDT<br>
         Data from <a href="https://www.perfectgame.org" style="color:#1e6b3a;">Perfect Game</a>
     </p>
 
@@ -518,6 +522,41 @@
             btn.classList.toggle('active');
             const content = btn.nextElementSibling;
             content.classList.toggle('open');
+        }
+
+        function toggleSnackPicker(pickerId) {
+            const el = document.getElementById(pickerId);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function submitSnackSignup(pickerId, teamName) {
+            const picker = document.getElementById(pickerId);
+            const dateSelect = picker.querySelector('.snack-date');
+            const dateVal = dateSelect ? dateSelect.value : '';
+            if (!dateVal) { alert('Please select a game date.'); return; }
+
+            const checked = picker.querySelectorAll('.snack-cb:checked');
+            const families = Array.from(checked).map(cb => cb.value);
+
+            const otherInput = picker.querySelector('.snack-other');
+            if (otherInput && otherInput.value.trim()) {
+                otherInput.value.split(',').forEach(f => {
+                    const trimmed = f.trim();
+                    if (trimmed) families.push(trimmed);
+                });
+            }
+
+            if (families.length === 0) { alert('Please select at least one family.'); return; }
+
+            const familyStr = families.join(', ');
+            const title = encodeURIComponent('[Snacks] Signup: ' + familyStr + ' - ' + dateVal);
+            const body = encodeURIComponent(
+                '### Team\n\n' + teamName +
+                '\n\n### Game Date\n\n' + dateVal +
+                '\n\n### Family Name(s)\n\n' + familyStr
+            );
+            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-signup&title=' + title + '&body=' + body;
+            window.open(url, '_blank');
         }
     </script>
 </body>
