@@ -907,6 +907,52 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
+        # Build snack signup family checkboxes from roster
+        snack_picker_html = ""
+        family_names = sorted(set(
+            p.get("name", "").strip().split()[-1]
+            for p in team_roster
+            if p.get("name", "").strip()
+        ))
+        if family_names:
+            picker_id = f"snack-picker-{slug}"
+            cbs = ""
+            for fam in family_names:
+                cb_id = f"snack-{slug}-{fam.lower()}"
+                cbs += f"""
+                        <label style="display:inline-block; margin:3px 10px 3px 0; cursor:pointer;">
+                            <input type="checkbox" class="snack-cb" data-picker="{picker_id}" value="{fam}"> {fam}
+                        </label>"""
+            # Build game date options from upcoming games
+            date_options = ""
+            seen_dates = set()
+            for g in upcoming:
+                d = g["date"].strftime("%Y-%m-%d")
+                if d not in seen_dates:
+                    label = g["date"].strftime("%b %d")
+                    date_options += f'<option value="{d}">{label}</option>'
+                    seen_dates.add(d)
+            snack_picker_html = f"""
+                <div class="snack-picker" id="{picker_id}" style="display:none; background:#fef9f0; border:1px solid #e67e22; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
+                    <strong style="font-size:13px;">Snack Signup</strong>
+                    <div style="margin:6px 0;">
+                        <label style="font-size:12px; color:#555;">Game Date:</label>
+                        <select class="snack-date" data-picker="{picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
+                            <option value="">Select date...</option>
+                            {date_options}
+                        </select>
+                    </div>
+                    <div style="margin:6px 0; font-size:13px;">
+                        <label style="font-size:12px; color:#555;">Family:</label><br>
+                        {cbs}
+                    </div>
+                    <div style="margin:6px 0; font-size:13px;">
+                        <label style="font-size:12px; color:#555;">Other (not listed above):</label><br>
+                        <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
+                    </div>
+                    <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
+                </div>"""
+
         team_sections += f"""
         <div class="grade-section">
             <button class="collapsible" onclick="toggleSection(this)">
@@ -925,8 +971,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
-                    <a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>
+                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-{slug}')">Sign Up for Snacks</button>
                 </div>
+                {snack_picker_html}
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
@@ -1209,6 +1256,41 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             btn.classList.toggle('active');
             const content = btn.nextElementSibling;
             content.classList.toggle('open');
+        }}
+
+        function toggleSnackPicker(pickerId) {{
+            const el = document.getElementById(pickerId);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }}
+
+        function submitSnackSignup(pickerId, teamName) {{
+            const picker = document.getElementById(pickerId);
+            const dateSelect = picker.querySelector('.snack-date');
+            const dateVal = dateSelect ? dateSelect.value : '';
+            if (!dateVal) {{ alert('Please select a game date.'); return; }}
+
+            const checked = picker.querySelectorAll('.snack-cb:checked');
+            const families = Array.from(checked).map(cb => cb.value);
+
+            const otherInput = picker.querySelector('.snack-other');
+            if (otherInput && otherInput.value.trim()) {{
+                otherInput.value.split(',').forEach(f => {{
+                    const trimmed = f.trim();
+                    if (trimmed) families.push(trimmed);
+                }});
+            }}
+
+            if (families.length === 0) {{ alert('Please select at least one family.'); return; }}
+
+            const familyStr = families.join(', ');
+            const title = encodeURIComponent('[Snacks] Signup: ' + familyStr + ' - ' + dateVal);
+            const body = encodeURIComponent(
+                '### Team\\n\\n' + teamName +
+                '\\n\\n### Game Date\\n\\n' + dateVal +
+                '\\n\\n### Family Name(s)\\n\\n' + familyStr
+            );
+            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-signup&title=' + title + '&body=' + body;
+            window.open(url, '_blank');
         }}
     </script>
 </body>
