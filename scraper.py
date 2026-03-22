@@ -991,6 +991,12 @@ def generate_index_html(all_games, config):
             Notifications are provided on a best-effort basis &mdash; do not rely solely on push
             alerts for schedule changes.
         </p>
+        <p style="font-size:13px; color:#555; line-height:1.6;">
+            We're grateful to <a href="https://www.perfectgame.org" style="color:#1e6b3a; font-weight:600;">Perfect Game</a>
+            for everything they do to support youth baseball. If you enjoy using this calendar,
+            please consider supporting PG by attending their events, following them on social media,
+            and spreading the word about the opportunities they create for young athletes.
+        </p>
     </div>
 
     <p class="footer">
