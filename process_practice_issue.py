@@ -126,7 +126,9 @@ def main():
             try:
                 entry["duration_minutes"] = int(duration)
             except ValueError:
-                pass
+                entry["duration_minutes"] = 90
+        else:
+            entry["duration_minutes"] = 90
         location = fields.get("location", "")
         if location and location != "_No response_":
             entry["location"] = location
