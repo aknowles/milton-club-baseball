@@ -909,6 +909,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
         # Build snack signup family checkboxes from roster
         snack_picker_html = ""
+        snack_button_html = ""
         family_names = sorted(set(
             p.get("name", "").strip().split()[-1]
             for p in team_roster
@@ -952,6 +953,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     </div>
                     <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
                 </div>"""
+            snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
+        else:
+            snack_button_html = '<a class="btn btn-snack" href="https://github.com/aknowles/milton-club-baseball/issues/new?template=snack-signup.yml&title=%5BSnacks%5D+Signup%3A+&labels=snack-signup">Sign Up for Snacks</a>'
 
         team_sections += f"""
         <div class="grade-section">
@@ -971,7 +975,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 <div class="buttons" style="margin-bottom: 12px;">
                     <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
-                    <button class="btn btn-snack" onclick="toggleSnackPicker('snack-picker-{slug}')">Sign Up for Snacks</button>
+                    {snack_button_html}
                 </div>
                 {snack_picker_html}
                 <div class="upcoming-games">
