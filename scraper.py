@@ -972,7 +972,7 @@ def generate_index_html(all_games, config):
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">How do I add, cancel, or change a practice?</summary>
-            <p style="margin:8px 0 0 0; color:#555;">Coaches and team admins can submit practice changes through our <a href="https://github.com/aknowles/milton-club-baseball/issues/new/choose" style="color:#1e6b3a;">GitHub Issues page</a>. Choose the appropriate template (Add Practice, Cancel Practice, or Modify Practice), fill in the details, and submit. A repo admin will review and approve the change, and it will automatically update the calendar.</p>
+            <p style="margin:8px 0 0 0; color:#555;">Coaches and team admins can submit practice changes through our <a href="https://github.com/aknowles/milton-club-baseball/issues/new/choose" style="color:#1e6b3a;">GitHub Issues page</a>. Choose the appropriate template (Add Practice, Cancel Practice, or Modify Practice), fill in the details, and submit. Each issue is for a single team. Once submitted, an admin reviews and comments <code>/approve</code> on the issue to apply the change. The calendar updates automatically after that.</p>
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">What kinds of events can be added as practices?</summary>
