@@ -960,7 +960,7 @@ def generate_index_html(all_games, config):
         <h2>FAQ</h2>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">How often does the calendar update?</summary>
-            <p style="margin:8px 0 0 0; color:#555;">The schedule is scraped from Perfect Game twice daily (8 AM and 8 PM ET). Your calendar app may take an additional few hours to pull the latest file &mdash; most apps refresh subscriptions every 12&ndash;24 hours.</p>
+            <p style="margin:8px 0 0 0; color:#555;">The schedule is copied from Perfect Game twice daily (8 AM and 8 PM ET). Your calendar app may take an additional few hours to pull the latest file &mdash; most apps refresh subscriptions every 12&ndash;24 hours.</p>
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">What triggers a push notification?</summary>
@@ -983,7 +983,7 @@ def generate_index_html(all_games, config):
     <div class="instructions" style="margin-top: 16px; background: #fff8e1; border-left: 4px solid #f9a825;">
         <h2 style="border:none; margin-top:0; color:#5d4037;">Disclaimer</h2>
         <p style="font-size:13px; color:#555; line-height:1.6;">
-            This is an unofficial, volunteer-run tool. Schedule data is scraped from
+            This is an unofficial, volunteer-run tool. Schedule data is copied from
             <a href="https://www.perfectgame.org" style="color:#1e6b3a;">Perfect Game</a> and may
             be delayed, incomplete, or occasionally incorrect. <strong>Always confirm game times and
             locations with your coach or team admin before traveling.</strong> This site is not
