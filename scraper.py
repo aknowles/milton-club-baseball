@@ -607,10 +607,17 @@ NTFY_URL = "https://ntfy.sh"
 
 
 def load_previous_snapshot(path="calendars/.snapshot.json"):
-    """Load the previous calendar snapshot for change detection."""
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            return json.load(f)
+    """Load the previous calendar snapshot from the live Pages site for change detection."""
+    try:
+        with open("config.json", "r") as f:
+            base_url = json.load(f).get("base_url", "")
+        if base_url:
+            url = f"{base_url}/{path}"
+            resp = requests.get(url, timeout=10)
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        print(f"Could not fetch previous snapshot from Pages: {e}")
     return {}
 
 
