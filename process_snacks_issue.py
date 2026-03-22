@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import urllib.request
 
 
 def parse_issue_body(body):
@@ -98,6 +99,25 @@ def main():
 
     save_config(config)
     print("config.json updated successfully")
+
+    # Send ntfy notification to the team's topic
+    team_cfg = next((t for t in config.get("teams", []) if t["team_name"] == team), None)
+    ntfy_topic = team_cfg.get("ntfy_topic") if team_cfg else None
+    if ntfy_topic:
+        family_str = ", ".join(families)
+        title = f"Snack Signup: {date_val}"
+        body = f"{family_str} signed up for snacks on {date_val}"
+        try:
+            req = urllib.request.Request(
+                f"https://ntfy.sh/{ntfy_topic}",
+                data=body.encode("utf-8"),
+                headers={"Title": title, "Priority": "default", "Tags": "baseball"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"ntfy sent to {ntfy_topic}: {title}")
+        except Exception as e:
+            print(f"ntfy send failed for {ntfy_topic}: {e}")
 
 
 if __name__ == "__main__":
