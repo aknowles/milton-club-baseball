@@ -104,13 +104,34 @@ Add notices to `config.json` to append messages to calendar event descriptions w
 
 Active notices are appended to the DESCRIPTION field of any calendar event falling within the date range.
 
+## Snacks Signup
+
+Track which families are bringing snacks to game days via the `snacks` block in `config.json`. Each team has an array of date/family entries:
+
+```json
+{
+  "snacks": {
+    "MDB Knights 11U Gold": [
+      {
+        "date": "2026-04-12",
+        "families": ["Smith", "Johnson"]
+      }
+    ]
+  }
+}
+```
+
+When families are signed up for a game date:
+- The calendar event description includes a `Snacks: Smith, Johnson` line
+- The index page shows a snack tag next to the game (first game of the day for doubleheaders)
+
 ## Workflow Failure Notifications
 
 The workflow automatically creates a GitHub issue with the `workflow-failure` label when it fails.
 
 ## Configuration
 
-Edit `config.json` to add or modify teams, practices, and notices:
+Edit `config.json` to add or modify teams, practices, notices, and snacks:
 
 ```json
 {
@@ -125,7 +146,8 @@ Edit `config.json` to add or modify teams, practices, and notices:
   "base_url": "https://aknowles.github.io/milton-club-baseball",
   "timezone": "US/Eastern",
   "practices": { ... },
-  "notices": [ ... ]
+  "notices": [ ... ],
+  "snacks": { ... }
 }
 ```
 
@@ -144,7 +166,7 @@ python scraper.py
 .github/ISSUE_TEMPLATE/                      # Issue templates for practice changes
 scraper.py                                   # Schedule scraper + calendar generator
 process_practice_issue.py                    # Issue body parser for practice changes
-config.json                                  # Team, practice, and notice configuration
+config.json                                  # Team, practice, notice, and snacks configuration
 calendars/                                   # Generated per-team .ics files
 calendars/.snapshot.json                     # Change detection snapshot (auto-managed)
 index.html                                   # Generated GitHub Pages site
