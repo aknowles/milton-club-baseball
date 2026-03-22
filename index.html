@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milton Club Baseball Calendars</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9918;</text></svg>">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        h1 { text-align: center; color: #1a1a2e; }
+        h2 { color: #1a1a2e; margin-top: 30px; border-bottom: 2px solid #1e6b3a; padding-bottom: 8px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+
+        .calendar-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .calendar-card h3 { margin: 0 0 8px 0; color: #1a1a2e; }
+        .description { color: #666; margin: 0 0 12px 0; font-size: 14px; }
+        .subscribe-url {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .subscribe-url code { flex: 1; font-size: 11px; word-break: break-all; }
+        .subscribe-url button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+        }
+        .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        .btn-primary { background: #1e6b3a; color: white; }
+        .btn-secondary { background: #1a1a2e; color: white; }
+
+        .grade-section { margin-bottom: 12px; }
+        .collapsible {
+            width: 100%;
+            background: #1a1a2e;
+            color: white;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        .collapsible:hover { background: #2a2a4e; }
+        .collapsible.active { border-radius: 10px 10px 0 0; }
+        .grade-title { font-weight: 700; }
+        .grade-info { font-size: 13px; opacity: 0.8; margin-left: 12px; }
+        .arrow { transition: transform 0.3s; }
+        .collapsible.active .arrow { transform: rotate(180deg); }
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #e8e8e8;
+            border-radius: 0 0 10px 10px;
+            padding: 0 16px;
+        }
+        .collapsible-content.open {
+            max-height: 5000px;
+            padding: 16px;
+        }
+
+        .game-row {
+            display: flex;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+        .game-row:last-child { border-bottom: none; }
+        .game-date { font-weight: 600; min-width: 50px; }
+        .game-time { color: #666; min-width: 70px; }
+        .game-matchup { flex: 1; }
+        .game-location { color: #888; font-size: 12px; }
+        .event-tag {
+            display: inline-block;
+            background: #1e6b3a;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .instructions {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .instructions h2 { margin-top: 0; border: none; }
+        .instructions ul { padding-left: 20px; }
+        .instructions li { margin-bottom: 10px; }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 13px;
+        }
+        .copied {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Milton Club Baseball</h1>
+    <p class="subtitle">Subscribe to automatically sync game schedules to your calendar</p>
+
+    <div id="copied" class="copied">URL Copied!</div>
+
+    <h2>Team Schedules</h2>
+    <p style="color: #666; font-size: 14px;">Click a team to subscribe to their calendar or see upcoming games.</p>
+    
+        <div class="grade-section">
+            <button class="collapsible" onclick="toggleSection(this)">
+                <div>
+                    <span class="grade-title">Braintree Bandits 11U Mercado</span>
+                    <span class="grade-info">14 upcoming games</span>
+                </div>
+                <span class="arrow">&#9660;</span>
+            </button>
+            <div class="collapsible-content">
+                <span class="event-tag">2026 11U PG New England League</span>
+                <div class="subscribe-url">
+                    <code>https://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics</code>
+                    <button onclick="copyUrl('https://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics')" title="Copy URL">&#128203;</button>
+                </div>
+                <div class="buttons" style="margin-bottom: 12px;">
+                    <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics">Subscribe</a>
+                    <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/braintree-bandits-11u-mercado.ics" download>Download .ics</a>
+                </div>
+                <div class="upcoming-games">
+                    
+                <div class="game-row">
+                    <span class="game-date">Apr 04</span>
+                    <span class="game-time">12:00 PM</span>
+                    <span class="game-matchup">@ Nokona Giants Orange</span>
+                    <span class="game-location">Mahoney Road</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 04</span>
+                    <span class="game-time">2:00 PM</span>
+                    <span class="game-matchup">@ Nokona Giants Orange</span>
+                    <span class="game-location">Mahoney Road</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 11</span>
+                    <span class="game-time">1:00 PM</span>
+                    <span class="game-matchup">vs. NHBA Aces 11U Black</span>
+                    <span class="game-location">128 Town St</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 11</span>
+                    <span class="game-time">3:00 PM</span>
+                    <span class="game-matchup">vs. NHBA Aces 11U Black</span>
+                    <span class="game-location">128 Town St</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 12</span>
+                    <span class="game-time">1:30 PM</span>
+                    <span class="game-matchup">@ Crush Baseball Elite</span>
+                    <span class="game-location">William A. Rice Recreation Area</span>
+                </div>
+                </div>
+            </div>
+        </div>
+        <div class="grade-section">
+            <button class="collapsible" onclick="toggleSection(this)">
+                <div>
+                    <span class="grade-title">MDB Knights 11U Blue</span>
+                    <span class="grade-info">28 upcoming games</span>
+                </div>
+                <span class="arrow">&#9660;</span>
+            </button>
+            <div class="collapsible-content">
+                <span class="event-tag">2026 11U PG New England League</span>
+                <div class="subscribe-url">
+                    <code>https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics</code>
+                    <button onclick="copyUrl('https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics')" title="Copy URL">&#128203;</button>
+                </div>
+                <div class="buttons" style="margin-bottom: 12px;">
+                    <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics">Subscribe</a>
+                    <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-blue.ics" download>Download .ics</a>
+                </div>
+                <div class="upcoming-games">
+                    
+                <div class="game-row">
+                    <span class="game-date">Mar 28</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ South Shore Patriots - Tocci</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 28</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ South Shore Patriots - Tocci</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 29</span>
+                    <span class="game-time">9:00 AM</span>
+                    <span class="game-matchup">@ Giants Elite</span>
+                    <span class="game-location">16 Dungeon Ave</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 29</span>
+                    <span class="game-time">11:00 AM</span>
+                    <span class="game-matchup">@ Giants Elite</span>
+                    <span class="game-location">16 Dungeon Ave</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 04</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ Westford Junior Ghosts</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                </div>
+            </div>
+        </div>
+        <div class="grade-section">
+            <button class="collapsible" onclick="toggleSection(this)">
+                <div>
+                    <span class="grade-title">MDB Knights 11U Gold</span>
+                    <span class="grade-info">24 upcoming games</span>
+                </div>
+                <span class="arrow">&#9660;</span>
+            </button>
+            <div class="collapsible-content">
+                <span class="event-tag">2026 11U PG New England League</span>
+                <div class="subscribe-url">
+                    <code>https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics</code>
+                    <button onclick="copyUrl('https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics')" title="Copy URL">&#128203;</button>
+                </div>
+                <div class="buttons" style="margin-bottom: 12px;">
+                    <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics">Subscribe</a>
+                    <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-11u-gold.ics" download>Download .ics</a>
+                </div>
+                <div class="upcoming-games">
+                    
+                <div class="game-row">
+                    <span class="game-date">Mar 28</span>
+                    <span class="game-time">1:30 PM</span>
+                    <span class="game-matchup">@ Nokona Giants Orange</span>
+                    <span class="game-location">Mahoney Road</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 28</span>
+                    <span class="game-time">3:30 PM</span>
+                    <span class="game-matchup">@ Nokona Giants Orange</span>
+                    <span class="game-location">Mahoney Road</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 29</span>
+                    <span class="game-time">8:00 AM</span>
+                    <span class="game-matchup">vs. 11U Franklin Bulldogs</span>
+                    <span class="game-location">Mattakeesett Street Field Complex</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Mar 29</span>
+                    <span class="game-time">10:00 AM</span>
+                    <span class="game-matchup">vs. 11U Franklin Bulldogs</span>
+                    <span class="game-location">Mattakeesett Street Field Complex</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 11</span>
+                    <span class="game-time">1:00 PM</span>
+                    <span class="game-matchup">vs. Boomer Baseball 11U</span>
+                    <span class="game-location">Mattakeesett Street Field Complex</span>
+                </div>
+                </div>
+            </div>
+        </div>
+        <div class="grade-section">
+            <button class="collapsible" onclick="toggleSection(this)">
+                <div>
+                    <span class="grade-title">MDB Knights 14U Blue</span>
+                    <span class="grade-info">30 upcoming games</span>
+                </div>
+                <span class="arrow">&#9660;</span>
+            </button>
+            <div class="collapsible-content">
+                <span class="event-tag">2026 14U PG New England League</span>
+                <div class="subscribe-url">
+                    <code>https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics</code>
+                    <button onclick="copyUrl('https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics')" title="Copy URL">&#128203;</button>
+                </div>
+                <div class="buttons" style="margin-bottom: 12px;">
+                    <a class="btn btn-primary" href="webcal://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics">Subscribe</a>
+                    <a class="btn btn-secondary" href="https://aknowles.github.io/milton-club-baseball/calendars/mdb-knights-14u-blue.ics" download>Download .ics</a>
+                </div>
+                <div class="upcoming-games">
+                    
+                <div class="game-row">
+                    <span class="game-date">Apr 11</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ South Shore Patriots - Gallagher</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 11</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ South Shore Patriots - Gallagher</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 12</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ Wolfpack</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 12</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ Wolfpack</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                <div class="game-row">
+                    <span class="game-date">Apr 18</span>
+                    <span class="game-time">TBD</span>
+                    <span class="game-matchup">@ Northeast Longhorns Orange</span>
+                    <span class="game-location">TBD</span>
+                </div>
+                </div>
+            </div>
+        </div>
+
+    <div class="instructions">
+        <h2>How to Subscribe</h2>
+        <ul>
+            <li><strong>Google Calendar:</strong> Other calendars (+) &rarr; From URL &rarr; paste URL</li>
+            <li><strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste URL</li>
+            <li><strong>iPhone/iPad:</strong> Tap "Subscribe" button, or Settings &rarr; Calendar &rarr; Accounts &rarr; Add Subscribed Calendar</li>
+            <li><strong>Outlook:</strong> Add calendar &rarr; Subscribe from web</li>
+        </ul>
+        <p><strong>Tip:</strong> Calendars auto-update every 24 hours. Schedule data refreshes twice daily.</p>
+    </div>
+
+    <p class="footer">
+        Last updated: 2026-03-22 14:51 EST<br>
+        Data from <a href="https://www.perfectgame.org" style="color:#1e6b3a;">Perfect Game</a>
+    </p>
+
+    <script>
+        function copyUrl(url) {
+            navigator.clipboard.writeText(url).then(() => {
+                const el = document.getElementById('copied');
+                el.style.display = 'block';
+                setTimeout(() => el.style.display = 'none', 2000);
+            });
+        }
+
+        function toggleSection(btn) {
+            btn.classList.toggle('active');
+            const content = btn.nextElementSibling;
+            content.classList.toggle('open');
+        }
+    </script>
+</body>
+</html>
