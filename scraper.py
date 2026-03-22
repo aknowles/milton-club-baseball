@@ -362,15 +362,25 @@ def parse_roster(html, team_name):
     soup = BeautifulSoup(html, "html.parser")
     players = []
 
-    # Find the rgRoster table (same Telerik RadGrid pattern as rgSchedule)
+    # Find the roster table — try multiple patterns used by PG
     roster_table = soup.find("table", id=re.compile(r"rgRoster.*_ctl00$", re.I))
     if not roster_table:
         roster_table = soup.find("table", id=re.compile(r"rgRoster", re.I))
     if not roster_table:
-        debug_log(f"Could not find rgRoster table for {team_name}")
+        # Try finding by surrounding heading text
+        for heading in soup.find_all(["h2", "h3", "h4", "span", "div"]):
+            if "roster" in heading.get_text(strip=True).lower():
+                roster_table = heading.find_next("table")
+                if roster_table:
+                    break
+    if not roster_table:
+        # Log all table IDs to help debug
+        all_tables = soup.find_all("table", id=True)
+        table_ids = [t.get("id", "") for t in all_tables]
+        print(f"  [roster] No roster table found for {team_name}. Table IDs on page: {table_ids}")
         return players
 
-    debug_log(f"Found rgRoster table: id='{roster_table.get('id', '')}'")
+    print(f"  [roster] Found roster table for {team_name}: id='{roster_table.get('id', '')}'")
 
     # Find header row to determine column mapping
     header_row = roster_table.find("tr", class_=re.compile(r"rgHeader", re.I))
@@ -914,7 +924,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         slug = team_slug(team_name)
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
-        # Build snack signup picker (always shown; checkboxes only when roster available)
+        # Build snack signup picker (always shown; checkboxes when roster available)
         picker_id = f"snack-picker-{slug}"
         family_names = sorted(set(
             p.get("name", "").strip().split()[-1]
@@ -1337,7 +1347,10 @@ def main():
             # Also scrape roster from the same page
             roster = parse_roster(html, name)
             if roster:
+                print(f"  Found {len(roster)} roster entries for {name}")
                 rosters_by_team[name] = roster
+            else:
+                print(f"  No roster found on page for {name}")
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
             continue
