@@ -466,6 +466,23 @@ def build_practice_events(config):
 # Notices
 # ---------------------------------------------------------------------------
 
+def get_snack_families(config, team_name, event_date):
+    """Return list of family names signed up for snacks on a given date."""
+    snacks_cfg = config.get("snacks", {})
+    team_snacks = snacks_cfg.get(team_name, [])
+    if isinstance(event_date, datetime):
+        check_date = event_date.strftime("%Y-%m-%d")
+    elif isinstance(event_date, date):
+        check_date = event_date.strftime("%Y-%m-%d")
+    else:
+        return []
+
+    for entry in team_snacks:
+        if entry.get("date") == check_date:
+            return entry.get("families", [])
+    return []
+
+
 def get_active_notices(config, event_date):
     """Return list of notice messages active for a given date."""
     notices = config.get("notices", [])
@@ -670,6 +687,11 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         if game.get("team_url"):
             desc_parts.append(f"Team: {game['team_url']}")
 
+        # Append snack signup info
+        snack_families = get_snack_families(config, game["team_name"], game["date"])
+        if snack_families:
+            desc_parts.append(f"Snacks: {', '.join(snack_families)}")
+
         # Append active notices
         active_notices = get_active_notices(config, game["date"])
         for notice in active_notices:
@@ -716,16 +738,28 @@ def generate_index_html(all_games, config):
         upcoming.sort(key=lambda g: g["date"])
 
         games_html = ""
+        snack_dates_shown = set()
         for g in upcoming[:5]:
             date_str = g["date"].strftime("%b %d")
+            date_key = g["date"].strftime("%Y-%m-%d")
             time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g["time"] else "TBD"
             loc_str = g.get("field_name") or g.get("location") or ""
+
+            # Show snack tag on first game of a double-header day
+            snack_tag = ""
+            if date_key not in snack_dates_shown:
+                snack_families = get_snack_families(config, team_name, g["date"])
+                if snack_families:
+                    snack_tag = f'<span class="snack-tag">Snacks: {", ".join(snack_families)}</span>'
+                    snack_dates_shown.add(date_key)
+
             games_html += f"""
                 <div class="game-row">
                     <span class="game-date">{date_str}</span>
                     <span class="game-time">{time_str}</span>
                     <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
                     <span class="game-location">{loc_str}</span>
+                    {snack_tag}
                 </div>"""
 
         event_label = ""
