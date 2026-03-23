@@ -29,6 +29,7 @@
       "snack_signup": true
     }
   ],
+  "notify_level": "important",
   "base_url": "https://aknowles.github.io/milton-club-baseball",
   "timezone": "US/Eastern",
   "practices": {
