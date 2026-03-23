@@ -626,7 +626,7 @@ def get_active_notices(config, event_date):
 NTFY_URL = "https://ntfy.sh"
 
 
-def load_previous_snapshot(path="calendars/.snapshot.json"):
+def load_previous_snapshot(path="calendars/snapshot.json"):
     """Load the previous calendar snapshot from the live Pages site for change detection.
 
     Also migrates old-format UIDs (date-opponent-time) to the current format
@@ -668,7 +668,7 @@ def load_previous_snapshot(path="calendars/.snapshot.json"):
     return migrated
 
 
-def save_snapshot(snapshot, path="calendars/.snapshot.json"):
+def save_snapshot(snapshot, path="calendars/snapshot.json"):
     """Save the current calendar snapshot."""
     with open(path, "w") as f:
         json.dump(snapshot, f, indent=2, default=str)
