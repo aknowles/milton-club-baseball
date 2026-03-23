@@ -331,6 +331,26 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         elif href.startswith("http"):
             game_url = href
 
+    # --- Score parsing ---
+    # Look for score patterns like "5-3", "W 5-3", "L 2-7", "5 - 3"
+    score = None
+    score_result = None  # "W", "L", or "T"
+    score_match = re.search(r"\b([WLT])?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text)
+    if score_match:
+        prefix = score_match.group(1)
+        runs_for = int(score_match.group(2))
+        runs_against = int(score_match.group(3))
+        score = f"{runs_for}-{runs_against}"
+        if prefix:
+            score_result = prefix.upper()
+        elif runs_for > runs_against:
+            score_result = "W"
+        elif runs_for < runs_against:
+            score_result = "L"
+        else:
+            score_result = "T"
+        debug_log(f"  Score found: {score} ({score_result})")
+
     # --- Build title ---
     title = f"{team_name} {home_away} {opponent}" if opponent else f"{team_name} - Game"
 
@@ -349,6 +369,8 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         "team_name": team_name,
         "team_url": team_url,
         "game_url": game_url,
+        "score": score,
+        "score_result": score_result,
     }
 
 
@@ -579,6 +601,51 @@ def build_practice_events(config):
 # ---------------------------------------------------------------------------
 # Notices
 # ---------------------------------------------------------------------------
+
+def get_game_result(config, team_name, event_date):
+    """Return game result ('W', 'L', 'T', or None) for a given team and date."""
+    results_cfg = config.get("game_results", {})
+    team_results = results_cfg.get(team_name, [])
+    if isinstance(event_date, datetime):
+        check_date = event_date.strftime("%Y-%m-%d")
+    elif isinstance(event_date, date):
+        check_date = event_date.strftime("%Y-%m-%d")
+    else:
+        return None
+
+    for entry in team_results:
+        if entry.get("date") == check_date:
+            return entry.get("result")  # "W", "L", or "T"
+    return None
+
+
+def get_event_emoji(game, config=None, is_past=False):
+    """Return emoji prefix for an event based on type and result.
+
+    - Practice: 🏋️
+    - Game (upcoming): ⚾
+    - Game (past, won): ✅
+    - Game (past, lost): ❌
+    - Game (past, tied): 🤝
+    - Game (past, no result): ⚾
+    """
+    if game.get("is_practice"):
+        return "🏋️"
+
+    if is_past:
+        # Check scraped score first, then fall back to config
+        result = game.get("score_result")
+        if not result and config:
+            result = get_game_result(config, game["team_name"], game["date"])
+        if result == "W":
+            return "✅"
+        elif result == "L":
+            return "❌"
+        elif result == "T":
+            return "🤝"
+
+    return "⚾"
+
 
 def get_snack_families(config, team_name, event_date):
     """Return list of family names signed up for snacks on a given date."""
@@ -893,7 +960,9 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 
     for game in games:
         event = Event()
-        event.add("summary", game["title"])
+        is_past = game["date"] < datetime.now()
+        emoji = get_event_emoji(game, config=config, is_past=is_past)
+        event.add("summary", f"{emoji} {game['title']}")
 
         if game.get("location"):
             event.add("location", vText(game["location"]))
@@ -916,6 +985,9 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 
         # Description
         desc_parts = []
+        if game.get("score"):
+            result_word = {"W": "Win", "L": "Loss", "T": "Tie"}.get(game.get("score_result"), "")
+            desc_parts.append(f"Result: {result_word} {game['score']}")
         if game.get("event_name") and game["event_name"] != "Practice":
             desc_parts.append(f"Tournament: {game['event_name']}")
         if game.get("event_url"):
@@ -981,11 +1053,31 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
         games_html = ""
         snack_dates_shown = set()
+
+        # Show recent past games with results (last 3)
+        past = [g for g in games if g["date"] < datetime.now() and not g.get("is_practice")]
+        past.sort(key=lambda g: g["date"], reverse=True)
+        past_with_results = [g for g in past if g.get("score_result") or get_game_result(config, team_name, g["date"])]
+        for g in past_with_results[:3]:
+            date_str = g["date"].strftime("%b %d")
+            emoji = get_event_emoji(g, config=config, is_past=True)
+            result = g.get("score_result") or get_game_result(config, team_name, g["date"])
+            result_label = {"W": "Win", "L": "Loss", "T": "Tie"}.get(result, "")
+            score_str = f" ({g['score']})" if g.get("score") else ""
+            games_html += f"""
+                <div class="game-row game-past">
+                    <span class="game-emoji">{emoji}</span>
+                    <span class="game-date">{date_str}</span>
+                    <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
+                    <span class="game-result-label">{result_label}{score_str}</span>
+                </div>"""
+
         for g in upcoming[:5]:
             date_str = g["date"].strftime("%b %d")
             date_key = g["date"].strftime("%Y-%m-%d")
             time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g["time"] else "TBD"
             loc_str = g.get("field_name") or g.get("location") or ""
+            emoji = get_event_emoji(g, config=config, is_past=False)
 
             # Show snack tag on first game of a double-header day
             snack_tag = ""
@@ -1004,6 +1096,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
             games_html += f"""
                 <div class="game-row">
+                    <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
                     <span class="game-time">{time_str}</span>
                     <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
@@ -1234,10 +1327,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             font-size: 14px;
         }}
         .game-row:last-child {{ border-bottom: none; }}
+        .game-past {{ opacity: 0.7; }}
+        .game-emoji {{ min-width: 24px; text-align: center; }}
         .game-date {{ font-weight: 600; min-width: 50px; }}
         .game-time {{ color: #666; min-width: 70px; }}
         .game-matchup {{ flex: 1; }}
         .game-location {{ color: #888; font-size: 12px; }}
+        .game-result-label {{ font-size: 12px; font-weight: 600; color: #666; }}
         .event-tag {{
             display: inline-block;
             background: #1e6b3a;
