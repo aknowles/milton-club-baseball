@@ -14,7 +14,7 @@ on:
       - '.github/workflows/update-calendar.yml'
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -37,16 +37,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytz
 
+      - name: Restore previous snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: calendars/snapshot.json
+          key: schedule-snapshot-${{ github.run_id }}
+          restore-keys: schedule-snapshot-
+
       - name: Run scraper
         run: python scraper.py
 
-      - name: Commit snapshot
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p calendars
-          git add -f calendars/snapshot.json
-          git diff --cached --quiet && echo "No snapshot changes" || git commit -m "Update schedule snapshot [skip ci]" && git push
+      - name: Save snapshot to cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: calendars/snapshot.json
+          key: schedule-snapshot-${{ github.run_id }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
