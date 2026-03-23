@@ -331,6 +331,26 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         elif href.startswith("http"):
             game_url = href
 
+    # --- Score parsing ---
+    # Look for score patterns like "5-3", "W 5-3", "L 2-7", "5 - 3"
+    score = None
+    score_result = None  # "W", "L", or "T"
+    score_match = re.search(r"\b([WLT])?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text)
+    if score_match:
+        prefix = score_match.group(1)
+        runs_for = int(score_match.group(2))
+        runs_against = int(score_match.group(3))
+        score = f"{runs_for}-{runs_against}"
+        if prefix:
+            score_result = prefix.upper()
+        elif runs_for > runs_against:
+            score_result = "W"
+        elif runs_for < runs_against:
+            score_result = "L"
+        else:
+            score_result = "T"
+        debug_log(f"  Score found: {score} ({score_result})")
+
     # --- Build title ---
     title = f"{team_name} {home_away} {opponent}" if opponent else f"{team_name} - Game"
 
@@ -349,6 +369,8 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         "team_name": team_name,
         "team_url": team_url,
         "game_url": game_url,
+        "score": score,
+        "score_result": score_result,
     }
 
 
@@ -610,8 +632,11 @@ def get_event_emoji(game, config=None, is_past=False):
     if game.get("is_practice"):
         return "🏋️"
 
-    if is_past and config:
-        result = get_game_result(config, game["team_name"], game["date"])
+    if is_past:
+        # Check scraped score first, then fall back to config
+        result = game.get("score_result")
+        if not result and config:
+            result = get_game_result(config, game["team_name"], game["date"])
         if result == "W":
             return "✅"
         elif result == "L":
@@ -960,6 +985,9 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 
         # Description
         desc_parts = []
+        if game.get("score"):
+            result_word = {"W": "Win", "L": "Loss", "T": "Tie"}.get(game.get("score_result"), "")
+            desc_parts.append(f"Result: {result_word} {game['score']}")
         if game.get("event_name") and game["event_name"] != "Practice":
             desc_parts.append(f"Tournament: {game['event_name']}")
         if game.get("event_url"):
@@ -1029,18 +1057,19 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         # Show recent past games with results (last 3)
         past = [g for g in games if g["date"] < datetime.now() and not g.get("is_practice")]
         past.sort(key=lambda g: g["date"], reverse=True)
-        past_with_results = [g for g in past if get_game_result(config, team_name, g["date"])]
+        past_with_results = [g for g in past if g.get("score_result") or get_game_result(config, team_name, g["date"])]
         for g in past_with_results[:3]:
             date_str = g["date"].strftime("%b %d")
             emoji = get_event_emoji(g, config=config, is_past=True)
-            result = get_game_result(config, team_name, g["date"])
+            result = g.get("score_result") or get_game_result(config, team_name, g["date"])
             result_label = {"W": "Win", "L": "Loss", "T": "Tie"}.get(result, "")
+            score_str = f" ({g['score']})" if g.get("score") else ""
             games_html += f"""
                 <div class="game-row game-past">
                     <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
                     <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
-                    <span class="game-result-label">{result_label}</span>
+                    <span class="game-result-label">{result_label}{score_str}</span>
                 </div>"""
 
         for g in upcoming[:5]:
