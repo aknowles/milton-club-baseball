@@ -648,20 +648,32 @@ def save_snapshot(snapshot, path="calendars/.snapshot.json"):
 
 
 def build_snapshot(games_by_team):
-    """Build a dict snapshot of games keyed by team, then by uid."""
+    """Build a dict snapshot of games keyed by team, then by uid.
+
+    UIDs are based on date + opponent only (not time), so that time changes
+    are detected as modifications rather than remove + add pairs.  When
+    multiple games share the same date + opponent, a sequence suffix is
+    appended to keep UIDs unique.
+    """
     snapshot = {}
     for team_name, games in games_by_team.items():
         team_events = {}
+        # Count occurrences of each base key to disambiguate duplicates
+        key_counts = {}
         for g in games:
             date_str = g["date"].strftime("%Y-%m-%d")
+            opponent = g.get("opponent") or "TBD"
+            base_key = f"{date_str}-{opponent}"
+            key_counts[base_key] = key_counts.get(base_key, 0) + 1
+            seq = key_counts[base_key]
+            uid = base_key if seq == 1 else f"{base_key}-{seq}"
             time_str = g["time"].strftime("%I:%M %p") if g.get("time") else "TBD"
-            uid = f"{date_str}-{g.get('opponent') or 'TBD'}-{time_str}"
             team_events[uid] = {
                 "title": g["title"],
                 "date": date_str,
                 "time": time_str,
                 "location": g.get("location") or "",
-                "opponent": g.get("opponent") or "",
+                "opponent": opponent,
             }
         snapshot[team_name] = team_events
     return snapshot
@@ -671,7 +683,13 @@ def detect_changes(old_snapshot, new_snapshot):
     """
     Compare old and new snapshots. Returns a dict of team_name -> list of
     change description strings.
+
+    Improvements over the original:
+    - Skips games in the past (no point notifying about yesterday's game).
+    - When a game appears as both added and removed on the same date, treats
+      it as a modification (handles TBD opponent -> real opponent transitions).
     """
+    today_str = date.today().strftime("%Y-%m-%d")
     changes = {}
     all_teams = set(list(old_snapshot.keys()) + list(new_snapshot.keys()))
 
@@ -680,27 +698,68 @@ def detect_changes(old_snapshot, new_snapshot):
         new_events = new_snapshot.get(team, {})
         team_changes = []
 
-        # New games
-        for uid in new_events:
-            if uid not in old_events:
-                e = new_events[uid]
-                team_changes.append(
-                    f"New: {e['title']} on {e['date']} at {e['time']}"
-                )
+        added_uids = [uid for uid in new_events if uid not in old_events]
+        removed_uids = [uid for uid in old_events if uid not in new_events]
 
-        # Removed games
-        for uid in old_events:
-            if uid not in new_events:
-                e = old_events[uid]
-                team_changes.append(
-                    f"Removed: {e['title']} on {e['date']}"
-                )
+        # Try to match removed + added on the same date as modifications
+        # (e.g. opponent changed from TBD to a real name)
+        matched_adds = set()
+        matched_removes = set()
+        for r_uid in removed_uids:
+            old_e = old_events[r_uid]
+            if old_e["date"] < today_str:
+                matched_removes.add(r_uid)  # skip past games silently
+                continue
+            for a_uid in added_uids:
+                if a_uid in matched_adds:
+                    continue
+                new_e = new_events[a_uid]
+                if old_e["date"] == new_e["date"]:
+                    # Same date — treat as a modification
+                    diffs = []
+                    if old_e.get("opponent") != new_e.get("opponent"):
+                        diffs.append(f"opponent {old_e['opponent']} -> {new_e['opponent']}")
+                    if old_e.get("time") != new_e.get("time"):
+                        diffs.append(f"time {old_e['time']} -> {new_e['time']}")
+                    if old_e.get("location") != new_e.get("location"):
+                        diffs.append(f"location -> {new_e['location']}")
+                    if diffs:
+                        team_changes.append(
+                            f"Changed: {new_e['title']} on {new_e['date']} ({', '.join(diffs)})"
+                        )
+                    matched_adds.add(a_uid)
+                    matched_removes.add(r_uid)
+                    break
+
+        # Remaining new games (truly new, not just modified)
+        for uid in added_uids:
+            if uid in matched_adds:
+                continue
+            e = new_events[uid]
+            if e["date"] < today_str:
+                continue  # skip past games
+            team_changes.append(
+                f"New: {e['title']} on {e['date']} at {e['time']}"
+            )
+
+        # Remaining removed games (truly removed, not just modified)
+        for uid in removed_uids:
+            if uid in matched_removes:
+                continue
+            e = old_events[uid]
+            if e["date"] < today_str:
+                continue  # skip past games
+            team_changes.append(
+                f"Removed: {e['title']} on {e['date']}"
+            )
 
         # Changed games (same uid, different details)
         for uid in new_events:
             if uid in old_events:
                 old_e = old_events[uid]
                 new_e = new_events[uid]
+                if new_e["date"] < today_str:
+                    continue  # skip past games
                 diffs = []
                 if old_e.get("time") != new_e.get("time"):
                     diffs.append(f"time {old_e['time']} -> {new_e['time']}")
@@ -739,7 +798,19 @@ def send_ntfy(topic, title, message):
 
 
 def notify_changes(changes, config):
-    """Send ntfy notifications for detected schedule changes."""
+    """Send ntfy notifications for detected schedule changes.
+
+    Respects the ``notify_level`` setting in config.json:
+      - "all"       — notify on any change (default)
+      - "important" — only new games and cancellations, skip minor updates
+                      like time tweaks or location text changes
+      - "none"      — suppress all push notifications
+    """
+    notify_level = config.get("notify_level", "all")
+    if notify_level == "none":
+        print("Notifications suppressed (notify_level=none)")
+        return
+
     team_topics = {}
     for team in config.get("teams", []):
         if team.get("ntfy_topic"):
@@ -749,6 +820,14 @@ def notify_changes(changes, config):
         topic = team_topics.get(team_name)
         if not topic:
             continue
+
+        if notify_level == "important":
+            # Only keep new and removed games; drop minor "Changed:" updates
+            change_list = [c for c in change_list if not c.startswith("Changed:")]
+
+        if not change_list:
+            continue
+
         body = "\n".join(change_list)
         send_ntfy(topic, f"Schedule Update: {team_name}", body)
 
