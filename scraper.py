@@ -627,45 +627,30 @@ NTFY_URL = "https://ntfy.sh"
 
 
 def load_previous_snapshot(path="calendars/snapshot.json"):
-    """Load the previous calendar snapshot from the live Pages site for change detection.
+    """Load the previous calendar snapshot from a local file.
 
-    Also migrates old-format UIDs (date-opponent-time) to the current format
-    (date-opponent) so that a format change doesn't cause a spurious
-    notification burst.
+    In CI this file is restored from the GitHub Actions cache before the
+    scraper runs, so we just read it from disk.  Falls back to an empty
+    dict when the file doesn't exist (first run / cache miss).
     """
-    snapshot = {}
-    try:
-        with open("config.json", "r") as f:
-            base_url = json.load(f).get("base_url", "")
-        if base_url:
-            url = f"{base_url}/{path}"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                snapshot = resp.json()
-    except Exception as e:
-        print(f"Could not fetch previous snapshot from Pages: {e}")
+    if not os.path.exists(path):
+        print(f"No previous snapshot found at {path} — first run or cache miss.")
         return {}
 
-    # Migrate old-format UIDs (date-opponent-time) → new format (date-opponent).
-    # Also normalise empty opponent strings to "TBD" to match current code.
-    migrated = {}
-    for team, events in snapshot.items():
-        new_events = {}
-        key_counts = {}
-        for uid, data in events.items():
-            # Normalise opponent
-            opp = data.get("opponent") or "TBD"
-            data["opponent"] = opp
+    try:
+        with open(path, "r") as f:
+            snapshot = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Could not read previous snapshot: {e}")
+        return {}
 
-            # Rebuild the UID in the current format
-            date_str = data.get("date", "")
-            base_key = f"{date_str}-{opp}"
-            key_counts[base_key] = key_counts.get(base_key, 0) + 1
-            seq = key_counts[base_key]
-            new_uid = base_key if seq == 1 else f"{base_key}-{seq}"
-            new_events[new_uid] = data
-        migrated[team] = new_events
-    return migrated
+    # Normalise opponent field ("" → "TBD") for consistent comparison.
+    for team, events in snapshot.items():
+        for uid, data in events.items():
+            if not data.get("opponent"):
+                data["opponent"] = "TBD"
+
+    return snapshot
 
 
 def save_snapshot(snapshot, path="calendars/snapshot.json"):

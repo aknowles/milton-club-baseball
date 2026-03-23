@@ -37,6 +37,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytz
 
+      - name: Restore snapshot cache
+        uses: actions/cache@v4
+        with:
+          path: calendars/snapshot.json
+          key: schedule-snapshot-${{ github.run_id }}
+          restore-keys: schedule-snapshot-
+
       - name: Run scraper
         run: python scraper.py
 
