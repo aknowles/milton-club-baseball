@@ -37,12 +37,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytz
 
-      - name: Restore snapshot cache
-        uses: actions/cache@v4
-        with:
-          path: calendars/snapshot.json
-          key: schedule-snapshot-${{ github.run_id }}
-          restore-keys: schedule-snapshot-
+      - name: Fetch previous snapshot from Pages
+        run: |
+          mkdir -p calendars
+          curl -sf "https://aknowles.github.io/milton-club-baseball/calendars/snapshot.json" \
+            -o calendars/snapshot.json || echo '{}' > calendars/snapshot.json
 
       - name: Run scraper
         run: python scraper.py
