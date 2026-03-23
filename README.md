@@ -168,7 +168,7 @@ scraper.py                                   # Schedule scraper + calendar gener
 process_practice_issue.py                    # Issue body parser for practice changes
 config.json                                  # Team, practice, notice, and snacks configuration
 calendars/                                   # Generated per-team .ics files
-calendars/.snapshot.json                     # Change detection snapshot (auto-managed)
+calendars/snapshot.json                      # Change detection snapshot (auto-managed)
 index.html                                   # Generated GitHub Pages site
 requirements.txt                             # Python dependencies
 ```
