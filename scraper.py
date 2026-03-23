@@ -851,8 +851,22 @@ def detect_changes(old_snapshot, new_snapshot):
                         f"Changed: {new_e['title']} on {new_e['date']} ({', '.join(diffs)})"
                     )
 
-        if team_changes:
-            changes[team] = team_changes
+        # Deduplicate identical lines (e.g. doubleheaders both showing "at TBD")
+        seen = set()
+        deduped = []
+        for c in team_changes:
+            if c not in seen:
+                seen.add(c)
+                deduped.append(c)
+            else:
+                # Mark existing entry as doubleheader
+                for i, d in enumerate(deduped):
+                    if d == c and "(DH)" not in d:
+                        deduped[i] = d.replace("New: ", "New: (DH) ").replace("Removed: ", "Removed: (DH) ").replace("Changed: ", "Changed: (DH) ")
+                        break
+
+        if deduped:
+            changes[team] = deduped
 
     return changes
 
@@ -1035,6 +1049,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     for team_name, games in sorted(teams.items()):
         upcoming = [g for g in games if g["date"] >= datetime.now()]
         upcoming.sort(key=lambda g: g["date"])
+
+        # Check snack signup config for this team (needed in the games loop below)
+        snack_signup_enabled = team_configs.get(team_name, {}).get("snack_signup", False)
 
         games_html = ""
         snack_dates_shown = set()
