@@ -983,7 +983,7 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         # Append snack signup info
         snack_families = get_snack_families(config, game["team_name"], game["date"])
         if snack_families:
-            desc_parts.append(f"Snacks: {', '.join(snack_families)}")
+            desc_parts.append(f"Lunch/Snacks: {', '.join(snack_families)}")
 
         # Append active notices
         active_notices = get_active_notices(config, game["date"])
@@ -1069,14 +1069,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             if snack_signup_enabled and date_key not in snack_dates_shown:
                 snack_families = get_snack_families(config, team_name, g["date"])
                 if snack_families:
-                    snack_tag = f'<span class="snack-tag">Snacks: {", ".join(snack_families)}</span>'
+                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                 else:
-                    snack_tag = '<span class="snack-tag snack-needed">Needs snacks</span>'
+                    snack_tag = '<span class="snack-tag snack-needed">Needs lunch/snacks</span>'
                 snack_dates_shown.add(date_key)
             elif not snack_signup_enabled and date_key not in snack_dates_shown:
                 snack_families = get_snack_families(config, team_name, g["date"])
                 if snack_families:
-                    snack_tag = f'<span class="snack-tag">Snacks: {", ".join(snack_families)}</span>'
+                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
 
             games_html += f"""
