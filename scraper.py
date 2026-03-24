@@ -848,8 +848,6 @@ def notify_changes(changes, config):
         if team.get("ntfy_topic"):
             team_topics[team["team_name"]] = team["ntfy_topic"]
 
-    max_new_per_team = 5  # Safety cap: too many "New" = likely snapshot mismatch
-
     for team_name, change_list in changes.items():
         topic = team_topics.get(team_name)
         if not topic:
@@ -860,14 +858,6 @@ def notify_changes(changes, config):
             change_list = [c for c in change_list if not c.startswith("Changed:")]
 
         if not change_list:
-            continue
-
-        # If an unusually high number of games appear "New", the snapshot
-        # was likely empty or corrupted — skip notifications to avoid spam.
-        new_count = sum(1 for c in change_list if c.startswith("New:"))
-        if new_count > max_new_per_team:
-            print(f"  SKIPPING notifications for {team_name}: {new_count} new games "
-                  f"exceeds safety cap of {max_new_per_team} (likely snapshot mismatch)")
             continue
 
         body = "\n".join(change_list)
