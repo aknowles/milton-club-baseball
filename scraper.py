@@ -706,18 +706,33 @@ def load_previous_snapshot(path="calendars/snapshot.json"):
 
     try:
         with open(path, "r") as f:
-            snapshot = json.load(f)
+            raw = f.read()
+        snapshot = json.loads(raw)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Could not read previous snapshot: {e}")
         return {}
 
-    # Normalise opponent field ("" → "TBD") for consistent comparison.
-    for team, events in snapshot.items():
-        for uid, data in events.items():
-            if not data.get("opponent"):
-                data["opponent"] = "TBD"
+    total_events = sum(len(v) for v in snapshot.values()) if snapshot else 0
+    print(f"Loaded previous snapshot: {len(snapshot)} teams, {total_events} events")
 
-    return snapshot
+    # Migrate old-format UIDs (date-opponent-time → date-opponent) and
+    # normalise opponent ("" → "TBD") so comparison keys always match.
+    migrated = {}
+    for team, events in snapshot.items():
+        new_events = {}
+        key_counts = {}
+        for uid, data in events.items():
+            opp = data.get("opponent") or "TBD"
+            data["opponent"] = opp
+            # Rebuild UID in the current format (date-opponent only)
+            date_str = data.get("date", "")
+            base_key = f"{date_str}-{opp}"
+            key_counts[base_key] = key_counts.get(base_key, 0) + 1
+            seq = key_counts[base_key]
+            new_uid = base_key if seq == 1 else f"{base_key}-{seq}"
+            new_events[new_uid] = data
+        migrated[team] = new_events
+    return migrated
 
 
 def save_snapshot(snapshot, path="calendars/snapshot.json"):
@@ -1697,15 +1712,21 @@ def main():
     # Change detection and ntfy notifications
     old_snapshot = load_previous_snapshot()
     new_snapshot = build_snapshot(games_by_team)
-    changes = detect_changes(old_snapshot, new_snapshot)
-    if changes:
-        print("\nSchedule changes detected:")
-        for team_name, change_list in changes.items():
-            for c in change_list:
-                print(f"  [{team_name}] {c}")
-        notify_changes(changes, config)
+
+    if not old_snapshot:
+        # No previous snapshot — seed run. Save snapshot without sending
+        # notifications so we don't blast every game as "New".
+        print("\nNo previous snapshot — seeding. Skipping notifications.")
     else:
-        print("\nNo schedule changes detected.")
+        changes = detect_changes(old_snapshot, new_snapshot)
+        if changes:
+            print("\nSchedule changes detected:")
+            for team_name, change_list in changes.items():
+                for c in change_list:
+                    print(f"  [{team_name}] {c}")
+            notify_changes(changes, config)
+        else:
+            print("\nNo schedule changes detected.")
     save_snapshot(new_snapshot)
 
     # Save rosters — fall back to previously published rosters from Pages
