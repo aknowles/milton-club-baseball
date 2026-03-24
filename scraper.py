@@ -648,13 +648,24 @@ def load_previous_snapshot(path="calendars/snapshot.json"):
     total_events = sum(len(v) for v in snapshot.values()) if snapshot else 0
     print(f"Loaded previous snapshot: {len(snapshot)} teams, {total_events} events")
 
-    # Normalise opponent field ("" → "TBD") for consistent comparison.
+    # Migrate old-format UIDs (date-opponent-time → date-opponent) and
+    # normalise opponent ("" → "TBD") so comparison keys always match.
+    migrated = {}
     for team, events in snapshot.items():
+        new_events = {}
+        key_counts = {}
         for uid, data in events.items():
-            if not data.get("opponent"):
-                data["opponent"] = "TBD"
-
-    return snapshot
+            opp = data.get("opponent") or "TBD"
+            data["opponent"] = opp
+            # Rebuild UID in the current format (date-opponent only)
+            date_str = data.get("date", "")
+            base_key = f"{date_str}-{opp}"
+            key_counts[base_key] = key_counts.get(base_key, 0) + 1
+            seq = key_counts[base_key]
+            new_uid = base_key if seq == 1 else f"{base_key}-{seq}"
+            new_events[new_uid] = data
+        migrated[team] = new_events
+    return migrated
 
 
 def save_snapshot(snapshot, path="calendars/snapshot.json"):
