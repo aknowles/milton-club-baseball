@@ -1601,15 +1601,21 @@ def main():
     # Change detection and ntfy notifications
     old_snapshot = load_previous_snapshot()
     new_snapshot = build_snapshot(games_by_team)
-    changes = detect_changes(old_snapshot, new_snapshot)
-    if changes:
-        print("\nSchedule changes detected:")
-        for team_name, change_list in changes.items():
-            for c in change_list:
-                print(f"  [{team_name}] {c}")
-        notify_changes(changes, config)
+
+    if not old_snapshot:
+        # No previous snapshot — seed run. Save snapshot without sending
+        # notifications so we don't blast every game as "New".
+        print("\nNo previous snapshot — seeding. Skipping notifications.")
     else:
-        print("\nNo schedule changes detected.")
+        changes = detect_changes(old_snapshot, new_snapshot)
+        if changes:
+            print("\nSchedule changes detected:")
+            for team_name, change_list in changes.items():
+                for c in change_list:
+                    print(f"  [{team_name}] {c}")
+            notify_changes(changes, config)
+        else:
+            print("\nNo schedule changes detected.")
     save_snapshot(new_snapshot)
 
     # Save rosters — fall back to previously published rosters from Pages
