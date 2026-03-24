@@ -40,8 +40,18 @@ jobs:
       - name: Fetch previous snapshot from Pages
         run: |
           mkdir -p calendars
-          curl -sf "https://aknowles.github.io/milton-club-baseball/calendars/snapshot.json" \
-            -o calendars/snapshot.json || echo '{}' > calendars/snapshot.json
+          HTTP_CODE=$(curl -s -o calendars/snapshot.json -w "%{http_code}" \
+            "https://aknowles.github.io/milton-club-baseball/calendars/snapshot.json") || true
+          echo "Snapshot fetch HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "WARNING: Snapshot fetch failed (HTTP $HTTP_CODE) — using empty snapshot"
+            echo '{}' > calendars/snapshot.json
+          fi
+          SNAP_SIZE=$(wc -c < calendars/snapshot.json)
+          echo "Snapshot file size: ${SNAP_SIZE} bytes"
+          if [ "$SNAP_SIZE" -lt 10 ]; then
+            echo "WARNING: Snapshot is suspiciously small (${SNAP_SIZE} bytes)"
+          fi
 
       - name: Run scraper
         run: python scraper.py
