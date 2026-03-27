@@ -1,5 +1,5 @@
 name: Snack Swap
-description: Request to swap your assigned lunch/snack day with another date
+description: Request to swap your assigned lunch/snack day with another family
 title: "[Snacks] Swap: "
 labels: ["snack-swap"]
 body:
@@ -18,6 +18,7 @@ body:
     id: family
     attributes:
       label: Family Name
+      description: "Your family name (the family requesting the swap)"
       placeholder: "Smith"
     validations:
       required: true
@@ -25,23 +26,31 @@ body:
     id: current_date
     attributes:
       label: Currently Assigned Date
-      description: "Format: YYYY-MM-DD"
+      description: "The date you are currently assigned to. Format: YYYY-MM-DD"
       placeholder: "2026-04-12"
     validations:
       required: true
   - type: input
-    id: preferred_date
+    id: swap_to_date
     attributes:
-      label: Preferred New Date
-      description: "Leave blank if flexible"
+      label: Swap To Date
+      description: "The date you want to swap to. Format: YYYY-MM-DD"
       placeholder: "2026-04-19"
     validations:
-      required: false
+      required: true
+  - type: input
+    id: swap_with_family
+    attributes:
+      label: Swap With Family
+      description: "The family assigned to the target date that you want to swap with"
+      placeholder: "Jones"
+    validations:
+      required: true
   - type: textarea
     id: notes
     attributes:
       label: Notes
-      description: "Any additional context (e.g. reason for swap, willing to swap with specific family)"
+      description: "Any additional context (e.g. reason for swap)"
       placeholder: "Can't make the April 12 game due to a conflict"
     validations:
       required: false

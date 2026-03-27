@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Process a GitHub issue for snack signups.
+Process a GitHub issue for snack signups and swaps.
 
 Parses the issue body (GitHub issue form format) and updates config.json.
 Triggered by the process-snack-signups workflow when an admin comments /approve.
@@ -48,15 +48,26 @@ def save_config(config, path="config.json"):
         f.write("\n")
 
 
-def main():
-    issue_body = os.environ.get("ISSUE_BODY", "")
-    if not issue_body:
-        print("ERROR: No issue body found")
-        sys.exit(1)
+def send_ntfy(config, team, message_title, message_body):
+    """Send ntfy notification for a team."""
+    team_cfg = next((t for t in config.get("teams", []) if t["team_name"] == team), None)
+    ntfy_topic = team_cfg.get("ntfy_topic") if team_cfg else None
+    if ntfy_topic:
+        try:
+            req = urllib.request.Request(
+                f"https://ntfy.sh/{ntfy_topic}",
+                data=message_body.encode("utf-8"),
+                headers={"Title": message_title, "Priority": "default", "Tags": "baseball"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"ntfy sent to {ntfy_topic}: {message_title}")
+        except Exception as e:
+            print(f"ntfy send failed for {ntfy_topic}: {e}")
 
-    fields = parse_issue_body(issue_body)
-    print(f"Parsed fields: {json.dumps(fields, indent=2)}")
 
+def process_signup(fields, config):
+    """Process a snack signup issue."""
     team = fields.get("team", "")
     if not team:
         print("ERROR: No team specified")
@@ -77,7 +88,6 @@ def main():
         print("ERROR: No valid family names after parsing")
         sys.exit(1)
 
-    config = load_config()
     snacks = config.setdefault("snacks", {})
     team_snacks = snacks.setdefault(team, [])
 
@@ -100,24 +110,104 @@ def main():
     save_config(config)
     print("config.json updated successfully")
 
-    # Send ntfy notification to the team's topic
-    team_cfg = next((t for t in config.get("teams", []) if t["team_name"] == team), None)
-    ntfy_topic = team_cfg.get("ntfy_topic") if team_cfg else None
-    if ntfy_topic:
-        family_str = ", ".join(families)
-        title = f"Snack Signup: {date_val}"
-        body = f"{family_str} signed up for snacks on {date_val}"
-        try:
-            req = urllib.request.Request(
-                f"https://ntfy.sh/{ntfy_topic}",
-                data=body.encode("utf-8"),
-                headers={"Title": title, "Priority": "default", "Tags": "baseball"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                print(f"ntfy sent to {ntfy_topic}: {title}")
-        except Exception as e:
-            print(f"ntfy send failed for {ntfy_topic}: {e}")
+    family_str = ", ".join(families)
+    send_ntfy(config, team, f"Snack Signup: {date_val}", f"{family_str} signed up for snacks on {date_val}")
+
+
+def process_swap(fields, config):
+    """Process a snack swap issue — performs a two-way swap."""
+    team = fields.get("team", "")
+    if not team:
+        print("ERROR: No team specified")
+        sys.exit(1)
+
+    family_name = fields.get("family_name", "").strip()
+    if not family_name:
+        print("ERROR: No family name specified")
+        sys.exit(1)
+
+    current_date = fields.get("currently_assigned_date", "").strip()
+    if not current_date:
+        print("ERROR: No currently assigned date specified")
+        sys.exit(1)
+
+    swap_to_date = fields.get("swap_to_date", "").strip()
+    if not swap_to_date:
+        print("ERROR: No swap-to date specified")
+        sys.exit(1)
+
+    swap_with_family = fields.get("swap_with_family", "").strip()
+    if not swap_with_family:
+        print("ERROR: No swap-with family specified")
+        sys.exit(1)
+
+    snacks = config.setdefault("snacks", {})
+    team_snacks = snacks.setdefault(team, [])
+
+    # Find entries for both dates
+    current_entry = None
+    target_entry = None
+    for entry in team_snacks:
+        if entry.get("date") == current_date:
+            current_entry = entry
+        if entry.get("date") == swap_to_date:
+            target_entry = entry
+
+    if not current_entry:
+        print(f"ERROR: No snack entry found for {team} on {current_date}")
+        sys.exit(1)
+
+    if not target_entry:
+        print(f"ERROR: No snack entry found for {team} on {swap_to_date}")
+        sys.exit(1)
+
+    if family_name not in current_entry.get("families", []):
+        print(f"ERROR: {family_name} is not assigned to {current_date}")
+        sys.exit(1)
+
+    if swap_with_family not in target_entry.get("families", []):
+        print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
+        sys.exit(1)
+
+    # Perform the swap:
+    # Remove family_name from current_date, add to swap_to_date
+    current_entry["families"].remove(family_name)
+    target_entry["families"].append(family_name)
+
+    # Remove swap_with_family from swap_to_date, add to current_date
+    target_entry["families"].remove(swap_with_family)
+    current_entry["families"].append(swap_with_family)
+
+    print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
+
+    save_config(config)
+    print("config.json updated successfully")
+
+    send_ntfy(
+        config, team,
+        f"Snack Swap: {family_name} \u2194 {swap_with_family}",
+        f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})",
+    )
+
+
+def main():
+    issue_body = os.environ.get("ISSUE_BODY", "")
+    if not issue_body:
+        print("ERROR: No issue body found")
+        sys.exit(1)
+
+    issue_title = os.environ.get("ISSUE_TITLE", "")
+
+    fields = parse_issue_body(issue_body)
+    print(f"Parsed fields: {json.dumps(fields, indent=2)}")
+
+    config = load_config()
+
+    # Determine if this is a swap or a signup based on title
+    if "[Snacks] Swap" in issue_title:
+        process_swap(fields, config)
+    else:
+        process_signup(fields, config)
 
 
 if __name__ == "__main__":
