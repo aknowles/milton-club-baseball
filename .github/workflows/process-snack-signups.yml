@@ -41,11 +41,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const title = context.payload.issue.title || '';
+            const isSwap = title.includes('[Snacks] Swap');
+            const msg = isSwap
+              ? 'Snack swap approved and applied! The schedule will update on the next run.'
+              : 'Snack signup applied! It will appear on the calendar on the next scheduled run.';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: 'Snack signup applied! It will appear on the calendar on the next scheduled run.'
+              body: msg
             });
             await github.rest.issues.update({
               owner: context.repo.owner,
