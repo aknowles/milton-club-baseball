@@ -1323,6 +1323,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             <select class="swap-with-family" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;" disabled>
                                 <option value="">Select family...</option>
                             </select>
+                            <div style="font-size:11px; color:#888; margin-top:2px;">Leave as &ldquo;None&rdquo; for a one-way transfer (no return swap)</div>
                         </div>
                         <div style="margin:6px 0; font-size:13px;">
                             <label style="font-size:12px; color:#555;">Notes (optional):</label><br>
@@ -1862,10 +1863,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
             if (!currentDateVal) return;
 
-            // Show all other dates that have families assigned (possible swap targets)
+            // Show all other snack dates as possible swap/transfer targets
             const teamSnacks = snackAssignments[teamName] || [];
             const otherDates = teamSnacks.filter(function(entry) {{
-                return entry.date !== currentDateVal && entry.families && entry.families.length > 0;
+                return entry.date !== currentDateVal;
             }});
 
             if (otherDates.length === 0) {{
@@ -1877,7 +1878,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             otherDates.forEach(function(entry) {{
                 const d = new Date(entry.date + 'T12:00:00');
                 const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
-                const famList = entry.families.join(', ');
+                const famList = entry.families && entry.families.length > 0 ? entry.families.join(', ') : 'no families';
                 newDateSel.innerHTML += '<option value="' + entry.date + '">' + label + ' (' + famList + ')</option>';
             }});
             newDateSel.disabled = false;
@@ -1896,22 +1897,19 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
             if (!newDateVal) return;
 
+            // Always offer "None" for one-way transfer
+            swapWithSel.innerHTML = '<option value="">None (one-way transfer)</option>';
+
             // Find families assigned to the target date
             const teamSnacks = snackAssignments[teamName] || [];
             const targetEntry = teamSnacks.find(function(entry) {{ return entry.date === newDateVal; }});
-            if (!targetEntry || !targetEntry.families || targetEntry.families.length === 0) return;
-
-            // Exclude the requesting family (in case they appear on that date too)
-            const candidates = targetEntry.families.filter(function(f) {{ return f !== familyName; }});
-            if (candidates.length === 0) {{
-                swapWithSel.innerHTML = '<option value="">No families to swap with</option>';
-                return;
+            if (targetEntry && targetEntry.families && targetEntry.families.length > 0) {{
+                // Exclude the requesting family (in case they appear on that date too)
+                const candidates = targetEntry.families.filter(function(f) {{ return f !== familyName; }});
+                candidates.forEach(function(f) {{
+                    swapWithSel.innerHTML += '<option value="' + f + '">' + f + '</option>';
+                }});
             }}
-
-            swapWithSel.innerHTML = '<option value="">Select family...</option>';
-            candidates.forEach(function(f) {{
-                swapWithSel.innerHTML += '<option value="' + f + '">' + f + '</option>';
-            }});
             swapWithSel.disabled = false;
         }}
 
@@ -1931,20 +1929,32 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
             const swapWith = picker.querySelector('.swap-with-family');
             const swapWithVal = swapWith ? swapWith.value : '';
-            if (!swapWithVal) {{ alert('Please select the family to swap with.'); return; }}
 
             const notesInput = picker.querySelector('.swap-notes');
             const notes = notesInput ? notesInput.value.trim() : '';
 
-            const title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2194 ' + swapWithVal + ' (' + newDateVal + ')');
-            const body = encodeURIComponent(
-                '### Team\\n\\n' + teamName +
-                '\\n\\n### Family Name\\n\\n' + familyName +
-                '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
-                '\\n\\n### Swap To Date\\n\\n' + newDateVal +
-                '\\n\\n### Swap With Family\\n\\n' + swapWithVal +
-                (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
-            );
+            var title, body;
+            if (swapWithVal) {{
+                title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2194 ' + swapWithVal + ' (' + newDateVal + ')');
+                body = encodeURIComponent(
+                    '### Team\\n\\n' + teamName +
+                    '\\n\\n### Family Name\\n\\n' + familyName +
+                    '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
+                    '\\n\\n### Swap To Date\\n\\n' + newDateVal +
+                    '\\n\\n### Swap With Family\\n\\n' + swapWithVal +
+                    (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
+                );
+            }} else {{
+                title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2192 ' + newDateVal);
+                body = encodeURIComponent(
+                    '### Team\\n\\n' + teamName +
+                    '\\n\\n### Family Name\\n\\n' + familyName +
+                    '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
+                    '\\n\\n### Swap To Date\\n\\n' + newDateVal +
+                    '\\n\\n### Swap With Family\\n\\n' +
+                    (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
+                );
+            }}
             const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-swap&title=' + title + '&body=' + body;
             window.open(url, '_blank');
         }}
