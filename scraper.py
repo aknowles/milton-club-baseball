@@ -1152,11 +1152,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             result = g.get("score_result") or get_game_result(config, team_name, g["date"])
             result_label = {"W": "Win", "L": "Loss", "T": "Tie"}.get(result, "")
             score_str = f" ({g['score']})" if g.get("score") else ""
+            past_link = g.get("game_url") or g.get("event_url") or g.get("team_url") or ""
+            past_opp = g.get('opponent', 'TBD')
+            past_matchup = f'{g["home_away"]} <a href="{past_link}" target="_blank" class="game-link">{past_opp}</a>' if past_link else f'{g["home_away"]} {past_opp}'
             games_html += f"""
                 <div class="game-row game-past">
                     <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
-                    <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
+                    <span class="game-matchup">{past_matchup}</span>
                     <span class="game-result-label">{result_label}{score_str}</span>
                 </div>"""
 
@@ -1205,12 +1208,20 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
 
+            # Pick the best PG link: game-specific > event > team page
+            pg_link = first.get("game_url") or first.get("event_url") or first.get("team_url") or ""
+
+            if pg_link:
+                matchup_html = f'{first["home_away"]} <a href="{pg_link}" target="_blank" class="game-link">{opponent}</a> {dh_label}'
+            else:
+                matchup_html = f'{first["home_away"]} {opponent} {dh_label}'
+
             games_html += f"""
                 <div class="game-row">
                     <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
                     <span class="game-time">{time_str}</span>
-                    <span class="game-matchup">{first['home_away']} {opponent} {dh_label}</span>
+                    <span class="game-matchup">{matchup_html}</span>
                     <span class="game-location">{loc_str}</span>
                     {snack_tag}
                 </div>"""
@@ -1500,6 +1511,8 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         .game-date {{ font-weight: 600; min-width: 50px; }}
         .game-time {{ color: #666; min-width: 70px; }}
         .game-matchup {{ flex: 1; }}
+        .game-link {{ color: #1e6b3a; text-decoration: none; }}
+        .game-link:hover {{ text-decoration: underline; }}
         .game-location {{ color: #888; font-size: 12px; }}
         .game-result-label {{ font-size: 12px; font-weight: 600; color: #666; }}
         .event-tag {{
