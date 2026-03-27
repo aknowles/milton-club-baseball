@@ -1,0 +1,47 @@
+name: Snack Swap
+description: Request to swap your assigned lunch/snack day with another date
+title: "[Snacks] Swap: "
+labels: ["snack-swap"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: family
+    attributes:
+      label: Family Name
+      placeholder: "Smith"
+    validations:
+      required: true
+  - type: input
+    id: current_date
+    attributes:
+      label: Currently Assigned Date
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-12"
+    validations:
+      required: true
+  - type: input
+    id: preferred_date
+    attributes:
+      label: Preferred New Date
+      description: "Leave blank if flexible"
+      placeholder: "2026-04-19"
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: "Any additional context (e.g. reason for swap, willing to swap with specific family)"
+      placeholder: "Can't make the April 12 game due to a conflict"
+    validations:
+      required: false
