@@ -115,7 +115,7 @@ def process_signup(fields, config):
 
 
 def process_swap(fields, config):
-    """Process a snack swap issue — performs a two-way swap."""
+    """Process a snack swap issue — two-way swap or one-way transfer."""
     team = fields.get("team", "")
     if not team:
         print("ERROR: No team specified")
@@ -137,9 +137,8 @@ def process_swap(fields, config):
         sys.exit(1)
 
     swap_with_family = fields.get("swap_with_family", "").strip()
-    if not swap_with_family:
-        print("ERROR: No swap-with family specified")
-        sys.exit(1)
+    if swap_with_family == "_No response_":
+        swap_with_family = ""
 
     snacks = config.setdefault("snacks", {})
     team_snacks = snacks.setdefault(team, [])
@@ -157,37 +156,49 @@ def process_swap(fields, config):
         print(f"ERROR: No snack entry found for {team} on {current_date}")
         sys.exit(1)
 
-    if not target_entry:
-        print(f"ERROR: No snack entry found for {team} on {swap_to_date}")
-        sys.exit(1)
-
     if family_name not in current_entry.get("families", []):
         print(f"ERROR: {family_name} is not assigned to {current_date}")
         sys.exit(1)
 
-    if swap_with_family not in target_entry.get("families", []):
-        print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
-        sys.exit(1)
+    # Create target entry if it doesn't exist (for one-way transfers to unassigned dates)
+    if not target_entry:
+        target_entry = {"date": swap_to_date, "families": []}
+        team_snacks.append(target_entry)
 
-    # Perform the swap:
-    # Remove family_name from current_date, add to swap_to_date
-    current_entry["families"].remove(family_name)
-    target_entry["families"].append(family_name)
+    if swap_with_family:
+        # Two-way swap
+        if swap_with_family not in target_entry.get("families", []):
+            print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
+            sys.exit(1)
 
-    # Remove swap_with_family from swap_to_date, add to current_date
-    target_entry["families"].remove(swap_with_family)
-    current_entry["families"].append(swap_with_family)
+        current_entry["families"].remove(family_name)
+        target_entry["families"].append(family_name)
+        target_entry["families"].remove(swap_with_family)
+        current_entry["families"].append(swap_with_family)
 
-    print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
+        print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
+        save_config(config)
+        print("config.json updated successfully")
 
-    save_config(config)
-    print("config.json updated successfully")
+        send_ntfy(
+            config, team,
+            f"Snack Swap: {family_name} \u2194 {swap_with_family}",
+            f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})",
+        )
+    else:
+        # One-way transfer — just move the family to the new date
+        current_entry["families"].remove(family_name)
+        target_entry["families"].append(family_name)
 
-    send_ntfy(
-        config, team,
-        f"Snack Swap: {family_name} \u2194 {swap_with_family}",
-        f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})",
-    )
+        print(f"Transferred: {family_name} from {current_date} -> {swap_to_date}")
+        save_config(config)
+        print("config.json updated successfully")
+
+        send_ntfy(
+            config, team,
+            f"Snack Transfer: {family_name}",
+            f"{family_name} moved from {current_date} to {swap_to_date}",
+        )
 
 
 def main():

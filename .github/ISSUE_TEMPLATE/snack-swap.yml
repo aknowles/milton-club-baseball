@@ -1,5 +1,5 @@
 name: Snack Swap
-description: Request to swap your assigned lunch/snack day with another family
+description: Request to swap your assigned lunch/snack day with another family, or transfer to a different date
 title: "[Snacks] Swap: "
 labels: ["snack-swap"]
 body:
@@ -42,10 +42,10 @@ body:
     id: swap_with_family
     attributes:
       label: Swap With Family
-      description: "The family assigned to the target date that you want to swap with"
-      placeholder: "Jones"
+      description: "The family assigned to the target date that you want to swap with. Leave blank for a one-way transfer (you move dates, no return swap)."
+      placeholder: "Jones (or leave blank for one-way transfer)"
     validations:
-      required: true
+      required: false
   - type: textarea
     id: notes
     attributes:
