@@ -764,16 +764,16 @@ def build_snapshot(games_by_team):
 
 def detect_changes(old_snapshot, new_snapshot):
     """
-    Compare old and new snapshots. Returns a dict of team_name -> list of
-    change description strings.
-
-    Improvements over the original:
-    - Skips games in the past (no point notifying about yesterday's game).
-    - When a game appears as both added and removed on the same date, treats
-      it as a modification (handles TBD opponent -> real opponent transitions).
+    Compare old and new snapshots. Returns a tuple of:
+      (changes, reschedules)
+    where *changes* is a dict of team_name -> list of change description
+    strings and *reschedules* is a list of
+    ``{"team": str, "old_date": str, "new_date": str, "opponent": str}``
+    dicts representing games that moved to a different date (same opponent).
     """
     today_str = date.today().strftime("%Y-%m-%d")
     changes = {}
+    reschedules = []
     all_teams = set(list(old_snapshot.keys()) + list(new_snapshot.keys()))
 
     for team in all_teams:
@@ -812,6 +812,36 @@ def detect_changes(old_snapshot, new_snapshot):
                         team_changes.append(
                             f"Changed: {new_e['title']} on {new_e['date']} ({', '.join(diffs)})"
                         )
+                    matched_adds.add(a_uid)
+                    matched_removes.add(r_uid)
+                    break
+
+        # Match removed + added with the same opponent but different date
+        # as reschedules (game moved to a new date).
+        unmatched_removes = [u for u in removed_uids if u not in matched_removes]
+        unmatched_adds = [u for u in added_uids if u not in matched_adds]
+        for r_uid in unmatched_removes:
+            old_e = old_events[r_uid]
+            old_opp = (old_e.get("opponent") or "TBD").strip().lower()
+            if old_opp == "tbd":
+                continue  # can't reliably match TBD opponents
+            for a_uid in unmatched_adds:
+                if a_uid in matched_adds:
+                    continue
+                new_e = new_events[a_uid]
+                new_opp = (new_e.get("opponent") or "TBD").strip().lower()
+                if old_opp == new_opp and old_e["date"] != new_e["date"]:
+                    # Same opponent, different date — reschedule
+                    team_changes.append(
+                        f"Rescheduled: {new_e['title']} moved from "
+                        f"{old_e['date']} to {new_e['date']}"
+                    )
+                    reschedules.append({
+                        "team": team,
+                        "old_date": old_e["date"],
+                        "new_date": new_e["date"],
+                        "opponent": new_e.get("opponent") or old_e.get("opponent"),
+                    })
                     matched_adds.add(a_uid)
                     matched_removes.add(r_uid)
                     break
@@ -866,13 +896,64 @@ def detect_changes(old_snapshot, new_snapshot):
                 # Mark existing entry as doubleheader
                 for i, d in enumerate(deduped):
                     if d == c and "(DH)" not in d:
-                        deduped[i] = d.replace("New: ", "New: (DH) ").replace("Removed: ", "Removed: (DH) ").replace("Changed: ", "Changed: (DH) ")
+                        deduped[i] = d.replace("New: ", "New: (DH) ").replace("Removed: ", "Removed: (DH) ").replace("Changed: ", "Changed: (DH) ").replace("Rescheduled: ", "Rescheduled: (DH) ")
                         break
 
         if deduped:
             changes[team] = deduped
 
-    return changes
+    return changes, reschedules
+
+
+def migrate_snack_assignments(config, reschedules):
+    """Move snack assignments from old dates to new dates for rescheduled games.
+
+    Updates config["snacks"] in place. Returns a list of human-readable
+    descriptions of migrations performed.
+    """
+    snacks_cfg = config.get("snacks", {})
+    log = []
+    for rs in reschedules:
+        team = rs["team"]
+        old_date = rs["old_date"]
+        new_date = rs["new_date"]
+        team_snacks = snacks_cfg.get(team, [])
+
+        # Find the entry for the old date
+        old_entry = None
+        for entry in team_snacks:
+            if entry.get("date") == old_date:
+                old_entry = entry
+                break
+
+        if not old_entry:
+            continue  # no snack assignment on the old date
+
+        families = old_entry["families"]
+
+        # Check if the new date already has an assignment
+        new_entry = None
+        for entry in team_snacks:
+            if entry.get("date") == new_date:
+                new_entry = entry
+                break
+
+        if new_entry:
+            # New date already has assignments — don't overwrite
+            log.append(
+                f"  [{team}] Skipped snack migration {old_date} -> {new_date}: "
+                f"new date already has assignments ({', '.join(new_entry['families'])})"
+            )
+            continue
+
+        # Move the assignment: update the date on the existing entry
+        old_entry["date"] = new_date
+        log.append(
+            f"  [{team}] Migrated snack assignment {old_date} -> {new_date} "
+            f"({', '.join(families)})"
+        )
+
+    return log
 
 
 def send_ntfy(topic, title, message):
@@ -1897,7 +1978,7 @@ def main():
         # notifications so we don't blast every game as "New".
         print("\nNo previous snapshot — seeding. Skipping notifications.")
     else:
-        changes = detect_changes(old_snapshot, new_snapshot)
+        changes, reschedules = detect_changes(old_snapshot, new_snapshot)
         if changes:
             print("\nSchedule changes detected:")
             for team_name, change_list in changes.items():
@@ -1906,6 +1987,19 @@ def main():
             notify_changes(changes, config)
         else:
             print("\nNo schedule changes detected.")
+
+        # Migrate snack assignments for rescheduled games
+        if reschedules:
+            migration_log = migrate_snack_assignments(config, reschedules)
+            if migration_log:
+                print("\nSnack assignment migrations:")
+                for msg in migration_log:
+                    print(msg)
+                # Persist updated snack assignments
+                with open("config.json", "w") as f:
+                    json.dump(config, f, indent=2)
+                    f.write("\n")
+                print("Updated config.json with migrated snack assignments.")
     save_snapshot(new_snapshot)
 
     # Save rosters — fall back to previously published rosters from Pages
