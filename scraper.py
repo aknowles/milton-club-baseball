@@ -1124,6 +1124,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         snack_signup_enabled = team_configs.get(team_name, {}).get("snack_signup", False)
         snack_button_html = ""
         snack_picker_html = ""
+        swap_picker_html = ""
         picker_id = f"snack-picker-{slug}"
         if snack_signup_enabled:
             family_names = sorted(set(
@@ -1174,6 +1175,37 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     </div>"""
             snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
 
+            # Build swap picker
+            swap_picker_id = f"swap-picker-{slug}"
+            swap_picker_html = f"""
+                    <div class="snack-picker" id="{swap_picker_id}" style="display:none; background:#f0f4fe; border:1px solid #3b82f6; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
+                        <strong style="font-size:13px;">Swap Lunch Day</strong>
+                        <div style="margin:6px 0; font-size:13px;">
+                            <label style="font-size:12px; color:#555;">Your Family Name:</label><br>
+                            <input type="text" class="swap-your-family" data-picker="{swap_picker_id}" placeholder="e.g. Smith" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
+                        </div>
+                        <div style="margin:6px 0;">
+                            <label style="font-size:12px; color:#555;">Your Currently Assigned Date:</label>
+                            <select class="swap-current-date" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
+                                <option value="">Select date...</option>
+                                {date_options}
+                            </select>
+                        </div>
+                        <div style="margin:6px 0;">
+                            <label style="font-size:12px; color:#555;">Preferred New Date (optional):</label>
+                            <select class="swap-new-date" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;">
+                                <option value="">Any / no preference</option>
+                                {date_options}
+                            </select>
+                        </div>
+                        <div style="margin:6px 0; font-size:13px;">
+                            <label style="font-size:12px; color:#555;">Notes (optional):</label><br>
+                            <input type="text" class="swap-notes" data-picker="{swap_picker_id}" placeholder="e.g. Can't make it April 12" style="padding:3px 6px; font-size:13px; width:280px; margin-top:2px;">
+                        </div>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" onclick="submitSwapRequest('{swap_picker_id}', '{team_name}')">Submit Swap Request</button>
+                    </div>"""
+            snack_button_html += f' <button class="btn btn-snack" style="background:#3b82f6;" onclick="toggleSnackPicker(\'{swap_picker_id}\')">Swap Lunch Day</button>'
+
         # Extract org and age group from team name (e.g. "MDB Knights 11U Gold")
         age_match = re.search(r"\b(\d+U)\b", team_name, re.IGNORECASE)
         team_age = age_match.group(1) if age_match else ""
@@ -1200,6 +1232,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     {snack_button_html}
                 </div>
                 {snack_picker_html}
+                {swap_picker_html}
                 <div class="upcoming-games">
                     {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
                 </div>
@@ -1627,6 +1660,35 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 '\\n\\n### Family Name(s)\\n\\n' + familyStr
             );
             const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-signup&title=' + title + '&body=' + body;
+            window.open(url, '_blank');
+        }}
+
+        function submitSwapRequest(pickerId, teamName) {{
+            const picker = document.getElementById(pickerId);
+            const familyInput = picker.querySelector('.swap-your-family');
+            const familyName = familyInput ? familyInput.value.trim() : '';
+            if (!familyName) {{ alert('Please enter your family name.'); return; }}
+
+            const currentDate = picker.querySelector('.swap-current-date');
+            const currentDateVal = currentDate ? currentDate.value : '';
+            if (!currentDateVal) {{ alert('Please select your currently assigned date.'); return; }}
+
+            const newDate = picker.querySelector('.swap-new-date');
+            const newDateVal = newDate ? newDate.value : '';
+            const newDateStr = newDateVal || 'Any / no preference';
+
+            const notesInput = picker.querySelector('.swap-notes');
+            const notes = notesInput ? notesInput.value.trim() : '';
+
+            const title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' - ' + currentDateVal);
+            const body = encodeURIComponent(
+                '### Team\\n\\n' + teamName +
+                '\\n\\n### Family Name\\n\\n' + familyName +
+                '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
+                '\\n\\n### Preferred New Date\\n\\n' + newDateStr +
+                (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
+            );
+            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-swap&title=' + title + '&body=' + body;
             window.open(url, '_blank');
         }}
     </script>
