@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+from collections import OrderedDict
 from datetime import datetime, date, timedelta
 from urllib.parse import parse_qs, urlparse, unquote_plus
 
@@ -1159,24 +1160,47 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     <span class="game-result-label">{result_label}{score_str}</span>
                 </div>"""
 
-        for g in upcoming[:5]:
-            date_str = g["date"].strftime("%b %d")
+        # Group upcoming games by date for doubleheader collapsing
+        games_by_date = OrderedDict()
+        for g in upcoming:
             date_key = g["date"].strftime("%Y-%m-%d")
-            time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g["time"] else "TBD"
-            loc_str = g.get("field_name") or g.get("location") or ""
-            emoji = get_event_emoji(g, config=config, is_past=False)
+            games_by_date.setdefault(date_key, []).append(g)
 
-            # Show snack tag on first game of a double-header day
+        for date_key, day_games in games_by_date.items():
+            first = day_games[0]
+            date_str = first["date"].strftime("%b %d")
+            emoji = get_event_emoji(first, config=config, is_past=False)
+            is_dh = len(day_games) > 1
+
+            if is_dh:
+                # Collapse doubleheader into one row
+                times = []
+                for g in day_games:
+                    t = g["time"].strftime("%I:%M %p").lstrip("0") if g.get("time") else "TBD"
+                    times.append(t)
+                time_str = " / ".join(times)
+                # Use location from first game (usually same venue for DH)
+                loc_str = first.get("field_name") or first.get("location") or ""
+                opponent = first.get("opponent", "TBD")
+                dh_label = f'<span class="dh-tag">DH</span>'
+            else:
+                g = first
+                time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g.get("time") else "TBD"
+                loc_str = g.get("field_name") or g.get("location") or ""
+                opponent = g.get("opponent", "TBD")
+                dh_label = ""
+
+            # Show snack tag once per day
             snack_tag = ""
             if snack_signup_enabled and date_key not in snack_dates_shown:
-                snack_families = get_snack_families(config, team_name, g["date"])
+                snack_families = get_snack_families(config, team_name, first["date"])
                 if snack_families:
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                 else:
                     snack_tag = '<span class="snack-tag snack-needed">Needs lunch/snacks</span>'
                 snack_dates_shown.add(date_key)
             elif not snack_signup_enabled and date_key not in snack_dates_shown:
-                snack_families = get_snack_families(config, team_name, g["date"])
+                snack_families = get_snack_families(config, team_name, first["date"])
                 if snack_families:
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
@@ -1186,7 +1210,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
                     <span class="game-time">{time_str}</span>
-                    <span class="game-matchup">{g['home_away']} {g.get('opponent', 'TBD')}</span>
+                    <span class="game-matchup">{first['home_away']} {opponent} {dh_label}</span>
                     <span class="game-location">{loc_str}</span>
                     {snack_tag}
                 </div>"""
@@ -1416,6 +1440,17 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             background: transparent;
             color: #999;
             border: 1px dashed #ccc;
+        }}
+        .dh-tag {{
+            display: inline-block;
+            background: #6366f1;
+            color: white;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 4px;
+            vertical-align: middle;
         }}
 
         .grade-section {{ margin-bottom: 12px; }}
