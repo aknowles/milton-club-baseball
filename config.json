@@ -1,5 +1,9 @@
 {
-  "home_location": {"name": "Milton, MA", "lat": 42.2498, "lon": -71.0662},
+  "home_location": {
+    "name": "Milton, MA",
+    "lat": 42.2498,
+    "lon": -71.0662
+  },
   "travel_threshold_miles": 40,
   "teams": [
     {
@@ -65,7 +69,14 @@
     }
   },
   "notices": [],
-  "game_overrides": {},
+  "game_overrides": {
+    "MDB Knights 11U Gold": [
+      {
+        "date": "2026-03-28",
+        "status": "postponed"
+      }
+    ]
+  },
   "game_results": {},
   "snacks": {
     "MDB Knights 11U Gold": [
