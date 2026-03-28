@@ -1,5 +1,5 @@
 name: Snack Swap
-description: Request to swap your assigned lunch/snack day with another family, or transfer to a different date
+description: Take over another family's lunch/snack day, with or without a return swap
 title: "[Snacks] Swap: "
 labels: ["snack-swap"]
 body:
@@ -17,33 +17,32 @@ body:
   - type: input
     id: family
     attributes:
-      label: Family Name
-      description: "Your family name (the family requesting the swap)"
-      placeholder: "Smith"
+      label: Your Family Name
+      placeholder: "Knowles"
     validations:
       required: true
   - type: input
-    id: current_date
-    attributes:
-      label: Give Up Date
-      description: "The date you are giving up. Leave blank if you're taking on an extra day without giving one up. Format: YYYY-MM-DD"
-      placeholder: "2026-04-12 (or leave blank)"
-    validations:
-      required: false
-  - type: input
     id: swap_to_date
     attributes:
-      label: Take On Date
-      description: "The date you want to take on. Format: YYYY-MM-DD"
-      placeholder: "2026-04-19"
+      label: Date
+      description: "The date you are taking on. Format: YYYY-MM-DD"
+      placeholder: "2026-04-18"
     validations:
       required: true
   - type: input
     id: swap_with_family
     attributes:
-      label: Replace Family
-      description: "The family you're replacing on the target date. Leave blank to join that date without removing anyone."
-      placeholder: "Jones (or leave blank)"
+      label: Replacing
+      description: "The family you are replacing on that date"
+      placeholder: "Phillips"
+    validations:
+      required: true
+  - type: input
+    id: current_date
+    attributes:
+      label: They Take Your Date
+      description: "If they're taking one of your dates in return, enter it here. Leave blank for a one-way takeover. Format: YYYY-MM-DD"
+      placeholder: "2026-03-28 (or leave blank)"
     validations:
       required: false
   - type: textarea
@@ -51,6 +50,6 @@ body:
     attributes:
       label: Notes
       description: "Any additional context (e.g. reason for swap)"
-      placeholder: "Can't make the April 12 game due to a conflict"
+      placeholder: "Phillips can't make the April 18 game"
     validations:
       required: false

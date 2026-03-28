@@ -115,7 +115,7 @@ def process_signup(fields, config):
 
 
 def process_swap(fields, config):
-    """Process a snack swap — supports two-way swap, one-way transfer, or take-on."""
+    """Process a snack swap — one family replaces another, with optional return swap."""
     team = fields.get("team", "")
     if not team:
         print("ERROR: No team specified")
@@ -126,36 +126,40 @@ def process_swap(fields, config):
         print("ERROR: No family name specified")
         sys.exit(1)
 
+    swap_to_date = fields.get("swap_to_date", "").strip()
+    if not swap_to_date:
+        print("ERROR: No date specified")
+        sys.exit(1)
+
+    swap_with_family = fields.get("swap_with_family", "").strip()
+    if not swap_with_family or swap_with_family == "_No response_":
+        print("ERROR: No family to replace specified")
+        sys.exit(1)
+
     current_date = fields.get("currently_assigned_date", "").strip()
     if current_date == "_No response_":
         current_date = ""
 
-    swap_to_date = fields.get("swap_to_date", "").strip()
-    if not swap_to_date:
-        print("ERROR: No swap-to date specified")
-        sys.exit(1)
-
-    swap_with_family = fields.get("swap_with_family", "").strip()
-    if swap_with_family == "_No response_":
-        swap_with_family = ""
-
-    if not current_date and not swap_with_family:
-        print("ERROR: Must specify either a date to give up or a family to replace (or both)")
-        sys.exit(1)
-
     snacks = config.setdefault("snacks", {})
     team_snacks = snacks.setdefault(team, [])
 
-    # Find entries for relevant dates
-    current_entry = None
+    # Find entries
     target_entry = None
+    current_entry = None
     for entry in team_snacks:
-        if current_date and entry.get("date") == current_date:
-            current_entry = entry
         if entry.get("date") == swap_to_date:
             target_entry = entry
+        if current_date and entry.get("date") == current_date:
+            current_entry = entry
 
-    # Validate current date if specified
+    if not target_entry:
+        print(f"ERROR: No snack entry found for {team} on {swap_to_date}")
+        sys.exit(1)
+
+    if swap_with_family not in target_entry.get("families", []):
+        print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
+        sys.exit(1)
+
     if current_date:
         if not current_entry:
             print(f"ERROR: No snack entry found for {team} on {current_date}")
@@ -164,39 +168,21 @@ def process_swap(fields, config):
             print(f"ERROR: {family_name} is not assigned to {current_date}")
             sys.exit(1)
 
-    # Create target entry if it doesn't exist
-    if not target_entry:
-        target_entry = {"date": swap_to_date, "families": []}
-        team_snacks.append(target_entry)
-
-    # Validate swap-with family if specified
-    if swap_with_family:
-        if swap_with_family not in target_entry.get("families", []):
-            print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
-            sys.exit(1)
-
-    # Execute the swap/transfer/take-on
-    if current_date:
-        current_entry["families"].remove(family_name)
+    # On the target date: replace swap_with_family with family_name
+    target_entry["families"].remove(swap_with_family)
     target_entry["families"].append(family_name)
-    if swap_with_family:
-        target_entry["families"].remove(swap_with_family)
-        if current_date:
-            current_entry["families"].append(swap_with_family)
 
-    # Log and notify based on the mode
-    if current_date and swap_with_family:
+    # If return swap: also move swap_with_family onto the current date, remove family_name
+    if current_date and current_entry:
+        current_entry["families"].remove(family_name)
+        current_entry["families"].append(swap_with_family)
         print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
         ntfy_title = f"Snack Swap: {family_name} \u2194 {swap_with_family}"
         ntfy_body = f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})"
-    elif current_date:
-        print(f"Transferred: {family_name} from {current_date} -> {swap_to_date}")
-        ntfy_title = f"Snack Transfer: {family_name}"
-        ntfy_body = f"{family_name} moved from {current_date} to {swap_to_date}"
     else:
-        print(f"Take-on: {family_name} takes {swap_to_date} from {swap_with_family}")
-        ntfy_title = f"Snack Take-on: {family_name}"
-        ntfy_body = f"{family_name} taking over {swap_to_date} from {swap_with_family}"
+        print(f"Swap: {family_name} replaces {swap_with_family} on {swap_to_date}")
+        ntfy_title = f"Snack Swap: {family_name} replaces {swap_with_family}"
+        ntfy_body = f"{family_name} replaces {swap_with_family} on {swap_to_date}"
 
     save_config(config)
     print("config.json updated successfully")
