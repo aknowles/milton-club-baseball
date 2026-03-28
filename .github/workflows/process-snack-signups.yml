@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 jobs:
   process:
@@ -46,6 +47,17 @@ jobs:
           done
           echo "ERROR: Push failed after 3 retries"
           exit 1
+
+      - name: Trigger calendar rebuild
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'update-calendar.yml',
+              ref: 'main'
+            });
 
       - name: Close issue
         uses: actions/github-script@v7
