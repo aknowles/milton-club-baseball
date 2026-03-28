@@ -56,10 +56,19 @@ jobs:
       - name: Run scraper
         run: python scraper.py
 
+      - name: Prepare Pages output
+        run: |
+          mkdir -p _site/calendars
+          cp index.html _site/
+          cp -r calendars/*.ics _site/calendars/ 2>/dev/null || true
+          cp calendars/snapshot.json _site/calendars/ 2>/dev/null || true
+          cp calendars/rosters.json _site/calendars/ 2>/dev/null || true
+          touch _site/.nojekyll
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
   deploy:
     needs: scrape
