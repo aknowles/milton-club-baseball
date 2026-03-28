@@ -1,0 +1,67 @@
+name: Process Game Status Override
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  process:
+    if: >-
+      github.event.comment.body == '/approve' &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.issue.title, '[Game Status]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Process game status override
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: python process_game_status_issue.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config.json
+          git diff --cached --quiet && echo "No changes" || (git commit -m "Game status override from issue #${{ github.event.issue.number }}" && git push)
+
+      - name: Trigger calendar rebuild
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'update-calendar.yml',
+              ref: 'main'
+            });
+
+      - name: Close issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Game status override applied and committed. The calendar will update on the next scheduled run.'
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });

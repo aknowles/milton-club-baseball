@@ -65,7 +65,14 @@
     }
   },
   "notices": [],
-  "game_overrides": {},
+  "game_overrides": {
+    "MDB Knights 11U Gold": [
+      {
+        "date": "2026-03-28",
+        "status": "postponed"
+      }
+    ]
+  },
   "game_results": {},
   "snacks": {
     "MDB Knights 11U Gold": [
