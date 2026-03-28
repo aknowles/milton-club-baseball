@@ -170,12 +170,14 @@ def process_swap(fields, config):
 
     # On the target date: replace swap_with_family with family_name
     target_entry["families"].remove(swap_with_family)
-    target_entry["families"].append(family_name)
+    if family_name not in target_entry["families"]:
+        target_entry["families"].append(family_name)
 
     # If return swap: also move swap_with_family onto the current date, remove family_name
     if current_date and current_entry:
         current_entry["families"].remove(family_name)
-        current_entry["families"].append(swap_with_family)
+        if swap_with_family not in current_entry["families"]:
+            current_entry["families"].append(swap_with_family)
         print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
         ntfy_title = f"Snack Swap: {family_name} \u2194 {swap_with_family}"
         ntfy_body = f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})"
