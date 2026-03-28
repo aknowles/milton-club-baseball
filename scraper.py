@@ -107,6 +107,11 @@ def get_travel_distance(config, address, geocode_cache):
     if not home or not address:
         return None, False
 
+    # Skip placeholder / meaningless addresses
+    skip = {"tbd", "tba", ""}
+    if address.strip().lower() in skip:
+        return None, False
+
     # Check cache (None value means previously failed lookup)
     if address in geocode_cache:
         cached = geocode_cache[address]
