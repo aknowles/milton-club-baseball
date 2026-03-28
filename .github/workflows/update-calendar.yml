@@ -56,27 +56,10 @@ jobs:
       - name: Run scraper
         run: python scraper.py
 
-      - name: Prepare Pages output
-        run: |
-          echo "=== Generated files ==="
-          ls -la index.html calendars/ || true
-          if [ ! -f index.html ]; then
-            echo "ERROR: index.html was not generated!"
-            exit 1
-          fi
-          mkdir -p _site/calendars
-          cp index.html _site/
-          cp calendars/*.ics _site/calendars/ 2>/dev/null || true
-          cp calendars/snapshot.json _site/calendars/ 2>/dev/null || true
-          cp calendars/rosters.json _site/calendars/ 2>/dev/null || true
-          touch _site/.nojekyll
-          echo "=== _site contents ==="
-          find _site -type f
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: .
 
   deploy:
     needs: scrape
