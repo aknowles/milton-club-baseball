@@ -4,7 +4,7 @@ Perfect Game Baseball Schedule Scraper
 
 Scrapes PGBA team schedule pages and generates a merged iCal calendar file
 with lunch/snack signup and swap management.
-Designed for GitHub Actions + GitHub Pages deployment.
+Deployed via GitHub Actions to GitHub Pages.
 """
 
 import hashlib
