@@ -1307,27 +1307,27 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             </select>
                         </div>
                         <div style="margin:6px 0;">
-                            <label style="font-size:12px; color:#555;">Your Currently Assigned Date:</label>
-                            <select class="swap-current-date" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapCurrentDateChange(this)" disabled>
-                                <option value="">Select date...</option>
-                            </select>
-                        </div>
-                        <div style="margin:6px 0;">
-                            <label style="font-size:12px; color:#555;">Swap To Date:</label>
+                            <label style="font-size:12px; color:#555;">Date:</label>
                             <select class="swap-new-date" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapNewDateChange(this)" disabled>
                                 <option value="">Select date...</option>
                             </select>
                         </div>
                         <div style="margin:6px 0;">
-                            <label style="font-size:12px; color:#555;">Swap With Family:</label>
+                            <label style="font-size:12px; color:#555;">Replacing:</label>
                             <select class="swap-with-family" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;" disabled>
                                 <option value="">Select family...</option>
                             </select>
-                            <div style="font-size:11px; color:#888; margin-top:2px;">Leave as &ldquo;None&rdquo; for a one-way transfer (no return swap)</div>
+                        </div>
+                        <div style="margin:6px 0;">
+                            <label style="font-size:12px; color:#555;">They take your date:</label>
+                            <select class="swap-current-date" data-picker="{swap_picker_id}" style="margin-left:4px; padding:2px 6px; font-size:13px;" disabled>
+                                <option value="">None (no return swap)</option>
+                            </select>
+                            <div style="font-size:11px; color:#888; margin-top:2px;">Optional &mdash; if they&rsquo;re taking one of your dates in return</div>
                         </div>
                         <div style="margin:6px 0; font-size:13px;">
                             <label style="font-size:12px; color:#555;">Notes (optional):</label><br>
-                            <input type="text" class="swap-notes" data-picker="{swap_picker_id}" placeholder="e.g. Can't make it April 12" style="padding:3px 6px; font-size:13px; width:280px; margin-top:2px;">
+                            <input type="text" class="swap-notes" data-picker="{swap_picker_id}" placeholder="e.g. Phillips can't make April 18" style="padding:3px 6px; font-size:13px; width:280px; margin-top:2px;">
                         </div>
                         <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" onclick="submitSwapRequest('{swap_picker_id}', '{team_name}')">Submit Swap Request</button>
                     </div>"""
@@ -1812,73 +1812,34 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const picker = sel.closest('.snack-picker');
             const teamName = sel.dataset.team;
             const familyName = sel.value;
+            const newDateSel = picker.querySelector('.swap-new-date');
+            const swapWithSel = picker.querySelector('.swap-with-family');
             const currentDateSel = picker.querySelector('.swap-current-date');
-            const newDateSel = picker.querySelector('.swap-new-date');
-            const swapWithSel = picker.querySelector('.swap-with-family');
-
-            // Reset downstream dropdowns
-            currentDateSel.innerHTML = '<option value="">Select date...</option>';
-            currentDateSel.disabled = true;
-            newDateSel.innerHTML = '<option value="">Select date...</option>';
-            newDateSel.disabled = true;
-            swapWithSel.innerHTML = '<option value="">Select family...</option>';
-            swapWithSel.disabled = true;
-
-            if (!familyName || !teamName) return;
-
-            // Find dates this family is assigned to
-            const teamSnacks = snackAssignments[teamName] || [];
-            const assignedDates = teamSnacks.filter(function(entry) {{
-                return entry.families && entry.families.indexOf(familyName) !== -1;
-            }});
-
-            if (assignedDates.length === 0) {{
-                currentDateSel.innerHTML = '<option value="">No assigned dates found</option>';
-                return;
-            }}
-
-            currentDateSel.innerHTML = '<option value="">Select date...</option>';
-            assignedDates.forEach(function(entry) {{
-                const d = new Date(entry.date + 'T12:00:00');
-                const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
-                currentDateSel.innerHTML += '<option value="' + entry.date + '">' + label + '</option>';
-            }});
-            currentDateSel.disabled = false;
-        }}
-
-        function onSwapCurrentDateChange(sel) {{
-            const picker = sel.closest('.snack-picker');
-            const familySel = picker.querySelector('.swap-your-family');
-            const teamName = familySel.dataset.team;
-            const familyName = familySel.value;
-            const currentDateVal = sel.value;
-            const newDateSel = picker.querySelector('.swap-new-date');
-            const swapWithSel = picker.querySelector('.swap-with-family');
 
             // Reset downstream
             newDateSel.innerHTML = '<option value="">Select date...</option>';
             newDateSel.disabled = true;
             swapWithSel.innerHTML = '<option value="">Select family...</option>';
             swapWithSel.disabled = true;
+            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
+            currentDateSel.disabled = true;
 
-            if (!currentDateVal) return;
+            if (!familyName || !teamName) return;
 
-            // Show all other snack dates as possible swap/transfer targets
+            // Show all snack dates that have other families assigned
             const teamSnacks = snackAssignments[teamName] || [];
-            const otherDates = teamSnacks.filter(function(entry) {{
-                return entry.date !== currentDateVal;
+            const dates = teamSnacks.filter(function(entry) {{
+                return entry.families && entry.families.some(function(f) {{ return f !== familyName; }});
             }});
-
-            if (otherDates.length === 0) {{
-                newDateSel.innerHTML = '<option value="">No other dates available</option>';
+            if (dates.length === 0) {{
+                newDateSel.innerHTML = '<option value="">No dates available</option>';
                 return;
             }}
-
             newDateSel.innerHTML = '<option value="">Select date...</option>';
-            otherDates.forEach(function(entry) {{
+            dates.forEach(function(entry) {{
                 const d = new Date(entry.date + 'T12:00:00');
                 const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
-                const famList = entry.families && entry.families.length > 0 ? entry.families.join(', ') : 'no families';
+                const famList = entry.families.join(', ');
                 newDateSel.innerHTML += '<option value="' + entry.date + '">' + label + ' (' + famList + ')</option>';
             }});
             newDateSel.disabled = false;
@@ -1891,26 +1852,42 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const familyName = familySel.value;
             const newDateVal = sel.value;
             const swapWithSel = picker.querySelector('.swap-with-family');
+            const currentDateSel = picker.querySelector('.swap-current-date');
 
             swapWithSel.innerHTML = '<option value="">Select family...</option>';
             swapWithSel.disabled = true;
+            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
+            currentDateSel.disabled = true;
 
             if (!newDateVal) return;
 
-            // Always offer "None" for one-way transfer
-            swapWithSel.innerHTML = '<option value="">None (one-way transfer)</option>';
-
-            // Find families assigned to the target date
+            // Show families on this date (excluding the requesting family)
             const teamSnacks = snackAssignments[teamName] || [];
             const targetEntry = teamSnacks.find(function(entry) {{ return entry.date === newDateVal; }});
-            if (targetEntry && targetEntry.families && targetEntry.families.length > 0) {{
-                // Exclude the requesting family (in case they appear on that date too)
-                const candidates = targetEntry.families.filter(function(f) {{ return f !== familyName; }});
-                candidates.forEach(function(f) {{
-                    swapWithSel.innerHTML += '<option value="' + f + '">' + f + '</option>';
-                }});
-            }}
+            if (!targetEntry || !targetEntry.families) return;
+
+            const candidates = targetEntry.families.filter(function(f) {{ return f !== familyName; }});
+            if (candidates.length === 0) return;
+
+            swapWithSel.innerHTML = '<option value="">Select family...</option>';
+            candidates.forEach(function(f) {{
+                swapWithSel.innerHTML += '<option value="' + f + '">' + f + '</option>';
+            }});
             swapWithSel.disabled = false;
+
+            // Populate "They take your date" with requesting family's assigned dates
+            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
+            const assignedDates = teamSnacks.filter(function(entry) {{
+                return entry.date !== newDateVal && entry.families && entry.families.indexOf(familyName) !== -1;
+            }});
+            assignedDates.forEach(function(entry) {{
+                const d = new Date(entry.date + 'T12:00:00');
+                const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
+                currentDateSel.innerHTML += '<option value="' + entry.date + '">' + label + '</option>';
+            }});
+            if (assignedDates.length > 0) {{
+                currentDateSel.disabled = false;
+            }}
         }}
 
         function submitSwapRequest(pickerId, teamName) {{
@@ -1919,43 +1896,35 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const familyName = familySel ? familySel.value : '';
             if (!familyName) {{ alert('Please select your family name.'); return; }}
 
-            const currentDate = picker.querySelector('.swap-current-date');
-            const currentDateVal = currentDate ? currentDate.value : '';
-            if (!currentDateVal) {{ alert('Please select your currently assigned date.'); return; }}
-
             const newDate = picker.querySelector('.swap-new-date');
             const newDateVal = newDate ? newDate.value : '';
-            if (!newDateVal) {{ alert('Please select the date to swap to.'); return; }}
+            if (!newDateVal) {{ alert('Please select a date.'); return; }}
 
             const swapWith = picker.querySelector('.swap-with-family');
             const swapWithVal = swapWith ? swapWith.value : '';
+            if (!swapWithVal) {{ alert('Please select the family you are replacing.'); return; }}
+
+            const currentDate = picker.querySelector('.swap-current-date');
+            const currentDateVal = currentDate ? currentDate.value : '';
 
             const notesInput = picker.querySelector('.swap-notes');
             const notes = notesInput ? notesInput.value.trim() : '';
 
-            var title, body;
-            if (swapWithVal) {{
-                title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2194 ' + swapWithVal + ' (' + newDateVal + ')');
-                body = encodeURIComponent(
-                    '### Team\\n\\n' + teamName +
-                    '\\n\\n### Family Name\\n\\n' + familyName +
-                    '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
-                    '\\n\\n### Swap To Date\\n\\n' + newDateVal +
-                    '\\n\\n### Swap With Family\\n\\n' + swapWithVal +
-                    (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
-                );
+            var title;
+            if (currentDateVal) {{
+                title = '[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2194 ' + swapWithVal + ' (' + newDateVal + ')';
             }} else {{
-                title = encodeURIComponent('[Snacks] Swap: ' + familyName + ' (' + currentDateVal + ') \u2192 ' + newDateVal);
-                body = encodeURIComponent(
-                    '### Team\\n\\n' + teamName +
-                    '\\n\\n### Family Name\\n\\n' + familyName +
-                    '\\n\\n### Currently Assigned Date\\n\\n' + currentDateVal +
-                    '\\n\\n### Swap To Date\\n\\n' + newDateVal +
-                    '\\n\\n### Swap With Family\\n\\n' +
-                    (notes ? '\\n\\n### Notes\\n\\n' + notes : '')
-                );
+                title = '[Snacks] Swap: ' + familyName + ' replaces ' + swapWithVal + ' on ' + newDateVal;
             }}
-            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-swap&title=' + title + '&body=' + body;
+            const body =
+                '### Team\\n\\n' + teamName +
+                '\\n\\n### Family Name\\n\\n' + familyName +
+                '\\n\\n### Currently Assigned Date\\n\\n' + (currentDateVal || '') +
+                '\\n\\n### Swap To Date\\n\\n' + newDateVal +
+                '\\n\\n### Swap With Family\\n\\n' + swapWithVal +
+                (notes ? '\\n\\n### Notes\\n\\n' + notes : '');
+
+            const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-swap&title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
             window.open(url, '_blank');
         }}
     </script>
