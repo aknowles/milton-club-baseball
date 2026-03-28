@@ -25,25 +25,25 @@ body:
   - type: input
     id: current_date
     attributes:
-      label: Currently Assigned Date
-      description: "The date you are currently assigned to. Format: YYYY-MM-DD"
-      placeholder: "2026-04-12"
+      label: Give Up Date
+      description: "The date you are giving up. Leave blank if you're taking on an extra day without giving one up. Format: YYYY-MM-DD"
+      placeholder: "2026-04-12 (or leave blank)"
     validations:
-      required: true
+      required: false
   - type: input
     id: swap_to_date
     attributes:
-      label: Swap To Date
-      description: "The date you want to swap to. Format: YYYY-MM-DD"
+      label: Take On Date
+      description: "The date you want to take on. Format: YYYY-MM-DD"
       placeholder: "2026-04-19"
     validations:
       required: true
   - type: input
     id: swap_with_family
     attributes:
-      label: Swap With Family
-      description: "The family assigned to the target date that you want to swap with. Leave blank for a one-way transfer (you move dates, no return swap)."
-      placeholder: "Jones (or leave blank for one-way transfer)"
+      label: Replace Family
+      description: "The family you're replacing on the target date. Leave blank to join that date without removing anyone."
+      placeholder: "Jones (or leave blank)"
     validations:
       required: false
   - type: textarea
