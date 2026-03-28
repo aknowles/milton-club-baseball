@@ -1134,7 +1134,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     # Build team sections
     team_sections = ""
     for team_name, games in sorted(teams.items()):
-        upcoming = [g for g in games if g["date"] >= datetime.now()]
+        upcoming = [g for g in games if g["date"].date() >= date.today()]
         upcoming.sort(key=lambda g: g["date"])
 
         # Check snack signup config for this team (needed in the games loop below)
