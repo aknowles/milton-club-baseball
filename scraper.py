@@ -9,6 +9,7 @@ Deployed via GitHub Actions to GitHub Pages.
 
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -40,6 +41,90 @@ def debug_log(msg):
 def load_config(path="config.json"):
     with open(path, "r") as f:
         return json.load(f)
+
+
+# ---------------------------------------------------------------------------
+# Travel distance
+# ---------------------------------------------------------------------------
+
+GEOCODE_CACHE_PATH = "calendars/geocode_cache.json"
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    """Return the great-circle distance in miles between two coordinates."""
+    R = 3958.8  # Earth radius in miles
+    lat1, lon1, lat2, lon2 = (math.radians(v) for v in (lat1, lon1, lat2, lon2))
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+def geocode_address(address):
+    """Geocode an address string via Nominatim. Returns (lat, lon) or None."""
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": address, "format": "json", "limit": "1"},
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        results = resp.json()
+        if results:
+            return float(results[0]["lat"]), float(results[0]["lon"])
+    except (requests.RequestException, KeyError, ValueError, IndexError) as e:
+        debug_log(f"Geocode failed for '{address}': {e}")
+    return None
+
+
+def load_geocode_cache():
+    """Load the geocode cache from disk."""
+    if os.path.exists(GEOCODE_CACHE_PATH):
+        try:
+            with open(GEOCODE_CACHE_PATH, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def save_geocode_cache(cache):
+    """Write the geocode cache to disk."""
+    with open(GEOCODE_CACHE_PATH, "w") as f:
+        json.dump(cache, f, indent=2)
+
+
+def get_travel_distance(config, address, geocode_cache):
+    """Return distance in miles from home_location to *address*, or None.
+
+    Uses *geocode_cache* (dict) for lookups and stores new results in it.
+    The caller is responsible for persisting the cache after all lookups.
+    Returns a tuple of (distance_miles_or_None, did_geocode_bool).
+    """
+    home = config.get("home_location")
+    if not home or not address:
+        return None, False
+
+    # Check cache (None value means previously failed lookup)
+    if address in geocode_cache:
+        cached = geocode_cache[address]
+        if cached is None:
+            return None, False
+        dist = haversine(home["lat"], home["lon"], cached["lat"], cached["lon"])
+        return dist, False
+
+    # Geocode the address
+    result = geocode_address(address)
+    if result:
+        lat, lon = result
+        geocode_cache[address] = {"lat": lat, "lon": lon}
+        dist = haversine(home["lat"], home["lon"], lat, lon)
+        return dist, True
+    else:
+        geocode_cache[address] = None
+        return None, True
 
 
 # ---------------------------------------------------------------------------
@@ -1122,6 +1207,13 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         if game.get("team_url"):
             desc_parts.append(f"Team: {game['team_url']}")
 
+        # Travel distance
+        travel_threshold = config.get("travel_threshold_miles", 40)
+        travel_miles = game.get("travel_miles")
+        if travel_miles is not None and travel_miles >= travel_threshold:
+            home_name = config.get("home_location", {}).get("name", "home")
+            desc_parts.append(f"\U0001F697 Travel: ~{round(travel_miles)} miles from {home_name}")
+
         # Append snack signup info
         snack_families = get_snack_families(config, game["team_name"], game["date"])
         if snack_families:
@@ -1250,6 +1342,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
 
+            # Travel distance tag
+            travel_tag = ""
+            travel_threshold = config.get("travel_threshold_miles", 40)
+            travel_miles = first.get("travel_miles")
+            if travel_miles is not None and travel_miles >= travel_threshold:
+                travel_tag = f'<span class="travel-tag">\U0001F697 ~{round(travel_miles)} mi</span>'
+
             # Check for game override (postponed / cancelled)
             override = get_game_override(config, team_name, first["date"])
             status_tag = ""
@@ -1285,6 +1384,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     <span class="game-time">{time_str}</span>
                     <span class="game-matchup">{matchup_html}</span>
                     <span class="game-location">{loc_str}</span>
+                    {travel_tag}
                     {status_tag}
                     {snack_tag}
                 </div>"""
@@ -1549,6 +1649,17 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         .game-row.game-cancelled {{
             opacity: 0.5;
             text-decoration: line-through;
+        }}
+        .travel-tag {{
+            display: inline-block;
+            background: #64748b;
+            color: white;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 4px;
+            vertical-align: middle;
         }}
 
         .grade-section {{ margin-bottom: 12px; }}
@@ -2072,6 +2183,32 @@ def main():
         all_games.extend(practice_events)
 
     print(f"\nTotal events: {len(all_games)} (games + practices)")
+
+    # --- Travel distance lookups ---
+    if config.get("home_location"):
+        geocode_cache = load_geocode_cache()
+        # Collect unique addresses to minimise API calls
+        addr_to_games = {}
+        for game in all_games:
+            addr = game.get("address") or game.get("location")
+            if addr:
+                addr_to_games.setdefault(addr, []).append(game)
+
+        geocoded_count = 0
+        for addr in addr_to_games:
+            dist, did_geocode = get_travel_distance(config, addr, geocode_cache)
+            for game in addr_to_games[addr]:
+                if dist is not None:
+                    game["travel_miles"] = dist
+            if did_geocode:
+                geocoded_count += 1
+                time.sleep(1)  # respect Nominatim rate limits
+
+        save_geocode_cache(geocode_cache)
+        threshold = config.get("travel_threshold_miles", 40)
+        far_count = sum(1 for g in all_games if g.get("travel_miles", 0) >= threshold)
+        print(f"Travel distances: {geocoded_count} new geocode lookups, "
+              f"{far_count} games >= {threshold} mi from {config['home_location']['name']}")
 
     if not all_games:
         print("WARNING: No events found. Writing empty calendars.")
