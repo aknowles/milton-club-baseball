@@ -1324,7 +1324,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 # Use location from first game (usually same venue for DH)
                 loc_str = first.get("field_name") or first.get("location") or ""
                 opponent = first.get("opponent", "TBD")
-                dh_label = f'<span class="dh-tag">DH</span>'
+                dh_label = f'<span class="dh-tag" title="Doubleheader — {len(day_games)} games on this day">DH</span>'
             else:
                 g = first
                 time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g.get("time") else "TBD"
@@ -1352,7 +1352,8 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             travel_threshold = config.get("travel_threshold_miles", 40)
             travel_miles = first.get("travel_miles")
             if travel_miles is not None and travel_miles >= travel_threshold:
-                travel_tag = f'<span class="travel-tag">\U0001F697 ~{round(travel_miles)} mi</span>'
+                home_name = config.get("home_location", {}).get("name", "home")
+                travel_tag = f'<span class="travel-tag" title="~{round(travel_miles)} miles from {home_name}">\U0001F697 ~{round(travel_miles)} mi</span>'
 
             # Check for game override (postponed / cancelled)
             override = get_game_override(config, team_name, first["date"])
@@ -1363,15 +1364,17 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 reason = override.get("reason", "")
                 if status == "postponed":
                     label = "POSTPONED"
+                    tooltip = reason if reason else "This game has been postponed"
                     if reason:
                         label += f": {reason}"
-                    status_tag = f'<span class="status-tag status-postponed">{label}</span>'
+                    status_tag = f'<span class="status-tag status-postponed" title="{tooltip}">{label}</span>'
                     row_class = "game-row game-postponed"
                 elif status == "cancelled":
                     label = "CANCELLED"
+                    tooltip = reason if reason else "This game has been cancelled"
                     if reason:
                         label += f": {reason}"
-                    status_tag = f'<span class="status-tag status-cancelled">{label}</span>'
+                    status_tag = f'<span class="status-tag status-cancelled" title="{tooltip}">{label}</span>'
                     row_class = "game-row game-cancelled"
 
             # Pick the best PG link: game-specific > event > team page
