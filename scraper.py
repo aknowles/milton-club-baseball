@@ -1205,6 +1205,11 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         if game.get("score"):
             result_word = {"W": "Win", "L": "Loss", "T": "Tie"}.get(game.get("score_result"), "")
             desc_parts.append(f"Result: {result_word} {game['score']}")
+        if not game.get("is_practice"):
+            if game.get("home_away") == "@":
+                desc_parts.append("🟤 Wear dark jerseys (away)")
+            else:
+                desc_parts.append("⚪ Wear white jersey (home)")
         if game.get("event_name") and game["event_name"] != "Practice":
             desc_parts.append(f"Tournament: {game['event_name']}")
         if game.get("event_url"):
@@ -1385,6 +1390,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             else:
                 matchup_html = f'{first["home_away"]} {opponent} {dh_label}'
 
+            # Jersey color tag
+            jersey_tag = ""
+            if not first.get("is_practice"):
+                if first.get("home_away") == "@":
+                    jersey_tag = '<span class="jersey-tag jersey-dark" title="Away game — dark jerseys">🟤 Dark</span>'
+                else:
+                    jersey_tag = '<span class="jersey-tag jersey-white" title="Home game — white jersey">⚪ White</span>'
+
             games_html += f"""
                 <div class="{row_class}">
                     <span class="game-emoji">{emoji}</span>
@@ -1392,6 +1405,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     <span class="game-time">{time_str}</span>
                     <span class="game-matchup">{matchup_html}</span>
                     <span class="game-location">{loc_str}</span>
+                    {jersey_tag}
                     {travel_tag}
                     {status_tag}
                     {snack_tag}
@@ -1664,6 +1678,24 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             opacity: 0.5;
             text-decoration: line-through;
         }}
+        .jersey-tag {{
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 4px;
+            vertical-align: middle;
+        }}
+        .jersey-white {{
+            background: #f0f0f0;
+            color: #333;
+        }}
+        .jersey-dark {{
+            background: #333;
+            color: #f0f0f0;
+        }}
+
         .travel-tag {{
             display: inline-block;
             background: #64748b;
