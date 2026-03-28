@@ -621,10 +621,34 @@ def get_game_result(config, team_name, event_date):
     return None
 
 
+def get_game_override(config, team_name, event_date):
+    """Return game override dict for a given team and date, or None.
+
+    Override entries live under config["game_overrides"][team_name] and look
+    like: {"date": "YYYY-MM-DD", "status": "postponed"|"cancelled",
+           "reason": "optional explanation"}
+    """
+    overrides_cfg = config.get("game_overrides", {})
+    team_overrides = overrides_cfg.get(team_name, [])
+    if isinstance(event_date, datetime):
+        check_date = event_date.strftime("%Y-%m-%d")
+    elif isinstance(event_date, date):
+        check_date = event_date.strftime("%Y-%m-%d")
+    else:
+        return None
+
+    for entry in team_overrides:
+        if entry.get("date") == check_date:
+            return entry
+    return None
+
+
 def get_event_emoji(game, config=None, is_past=False):
     """Return emoji prefix for an event based on type and result.
 
     - Practice: 🏋️
+    - Game (postponed): ⚠️
+    - Game (cancelled): 🚫
     - Game (upcoming): ⚾
     - Game (past, won): ✅
     - Game (past, lost): ❌
@@ -633,6 +657,16 @@ def get_event_emoji(game, config=None, is_past=False):
     """
     if game.get("is_practice"):
         return "🏋️"
+
+    # Check for manual override (postponed / cancelled)
+    if config:
+        override = get_game_override(config, game["team_name"], game["date"])
+        if override:
+            status = override.get("status", "").lower()
+            if status == "postponed":
+                return "⚠️"
+            elif status == "cancelled":
+                return "🚫"
 
     if is_past:
         # Check scraped score first, then fall back to config
@@ -1048,7 +1082,10 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         event = Event()
         is_past = game["date"] < datetime.now()
         emoji = get_event_emoji(game, config=config, is_past=is_past)
-        event.add("summary", f"{emoji} {game['title']}")
+        override = get_game_override(config, game["team_name"], game["date"])
+        override_status = override.get("status", "").upper() if override else ""
+        summary_suffix = f" [{override_status}]" if override_status else ""
+        event.add("summary", f"{emoji} {game['title']}{summary_suffix}")
 
         if game.get("location"):
             event.add("location", vText(game["location"]))
@@ -1071,6 +1108,10 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 
         # Description
         desc_parts = []
+        if override_status:
+            reason = override.get("reason", "")
+            label = override_status.capitalize()
+            desc_parts.append(f"⚠️ {label}" + (f": {reason}" if reason else ""))
         if game.get("score"):
             result_word = {"W": "Win", "L": "Loss", "T": "Tie"}.get(game.get("score_result"), "")
             desc_parts.append(f"Result: {result_word} {game['score']}")
@@ -1209,6 +1250,26 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
 
+            # Check for game override (postponed / cancelled)
+            override = get_game_override(config, team_name, first["date"])
+            status_tag = ""
+            row_class = "game-row"
+            if override:
+                status = override.get("status", "").lower()
+                reason = override.get("reason", "")
+                if status == "postponed":
+                    label = "POSTPONED"
+                    if reason:
+                        label += f": {reason}"
+                    status_tag = f'<span class="status-tag status-postponed">{label}</span>'
+                    row_class = "game-row game-postponed"
+                elif status == "cancelled":
+                    label = "CANCELLED"
+                    if reason:
+                        label += f": {reason}"
+                    status_tag = f'<span class="status-tag status-cancelled">{label}</span>'
+                    row_class = "game-row game-cancelled"
+
             # Pick the best PG link: game-specific > event > team page
             pg_link = first.get("game_url") or first.get("event_url") or first.get("team_url") or ""
 
@@ -1218,12 +1279,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 matchup_html = f'{first["home_away"]} {opponent} {dh_label}'
 
             games_html += f"""
-                <div class="game-row">
+                <div class="{row_class}">
                     <span class="game-emoji">{emoji}</span>
                     <span class="game-date">{date_str}</span>
                     <span class="game-time">{time_str}</span>
                     <span class="game-matchup">{matchup_html}</span>
                     <span class="game-location">{loc_str}</span>
+                    {status_tag}
                     {snack_tag}
                 </div>"""
 
@@ -1464,6 +1526,29 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             font-weight: 600;
             margin-left: 4px;
             vertical-align: middle;
+        }}
+        .status-tag {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 6px;
+        }}
+        .status-postponed {{
+            background: #f59e0b;
+            color: white;
+        }}
+        .status-cancelled {{
+            background: #ef4444;
+            color: white;
+        }}
+        .game-row.game-postponed {{
+            opacity: 0.7;
+        }}
+        .game-row.game-cancelled {{
+            opacity: 0.5;
+            text-decoration: line-through;
         }}
 
         .grade-section {{ margin-bottom: 12px; }}
