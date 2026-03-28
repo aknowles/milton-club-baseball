@@ -16,7 +16,7 @@ import sys
 import time
 from collections import OrderedDict
 from datetime import datetime, date, timedelta
-from urllib.parse import parse_qs, urlparse, unquote_plus
+from urllib.parse import parse_qs, quote, urlparse, unquote_plus
 
 import requests
 from bs4 import BeautifulSoup
@@ -1496,6 +1496,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     </div>"""
             snack_button_html += f' <button class="btn btn-snack" style="background:#3b82f6;" onclick="toggleSnackPicker(\'{swap_picker_id}\')">Swap Lunch Day</button>'
 
+        # Build "Report Game Status" button link (pre-fills the issue template)
+        game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(team_name)}"
+        game_status_btn = f'<a class="btn btn-status" href="{game_status_url}" target="_blank">Report Postponed / Cancelled</a>'
+
         # Extract org and age group from team name (e.g. "MDB Knights 11U Gold")
         age_match = re.search(r"\b(\d+U)\b", team_name, re.IGNORECASE)
         team_age = age_match.group(1) if age_match else ""
@@ -1520,6 +1524,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
                     {snack_button_html}
+                    {game_status_btn}
                 </div>
                 {snack_picker_html}
                 {swap_picker_html}
@@ -1602,6 +1607,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         .btn-primary {{ background: #1e6b3a; color: white; }}
         .btn-secondary {{ background: #1a1a2e; color: white; }}
         .btn-snack {{ background: #e67e22; color: white; }}
+        .btn-status {{ background: #64748b; color: white; }}
         .snack-tag {{
             display: inline-block;
             background: #e67e22;
@@ -1855,6 +1861,23 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">A game time or location looks wrong &mdash; what do I do?</summary>
             <p style="margin:8px 0 0 0; color:#555;">This calendar pulls directly from Perfect Game. If something looks off, check the <a href="https://www.perfectgame.org" style="color:#1e6b3a;">PG website</a> first &mdash; if it's wrong there, contact your tournament director. If PG is correct but the calendar is wrong, let your team admin know so they can investigate.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">How do I mark a game as postponed or cancelled?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">Click the <strong>Report Postponed / Cancelled</strong> button under your team, fill in the date and status, and submit the issue. An admin will review and apply the change. The game will then show a &#9888;&#65039; (postponed) or &#128683; (cancelled) icon on the calendar and this page.</p>
+        </details>
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer; font-weight:600;">What do the icons on the schedule mean?</summary>
+            <p style="margin:8px 0 0 0; color:#555;">
+                &#9918; Upcoming game &bull;
+                &#9989; Win &bull;
+                &#10060; Loss &bull;
+                &#129309; Tie &bull;
+                &#9888;&#65039; Postponed &bull;
+                &#128683; Cancelled &bull;
+                &#127947;&#65039; Practice &bull;
+                &#128663; Far away game (distance from Milton, MA shown)
+            </p>
         </details>
         <details style="margin-bottom:12px;">
             <summary style="cursor:pointer; font-weight:600;">Is ntfy.sh free? Is it private?</summary>
