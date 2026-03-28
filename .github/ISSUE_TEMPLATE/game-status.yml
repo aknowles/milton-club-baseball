@@ -1,0 +1,40 @@
+name: Game Status Override
+description: Mark a game or doubleheader as postponed or cancelled
+title: "[Game Status] "
+labels: ["game-status"]
+body:
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      options:
+        - MDB Knights 11U Gold
+        - MDB Knights 14U Blue
+        - MDB Knights 11U Blue
+        - Braintree Bandits 11U Mercado
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Date of game
+      description: "Format: YYYY-MM-DD"
+      placeholder: "2026-04-15"
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status
+      options:
+        - postponed
+        - cancelled
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason (optional)
+      placeholder: "Weather forecast / Opponent withdrew / etc."
+    validations:
+      required: false

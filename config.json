@@ -1,4 +1,6 @@
 {
+  "home_location": {"name": "Milton, MA", "lat": 42.2498, "lon": -71.0662},
+  "travel_threshold_miles": 40,
   "teams": [
     {
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270150&team=1019769&Year=2026",
