@@ -208,6 +208,38 @@ def parse_schedule(html, team_name, team_url):
             f.write(html)
         debug_log(f"Saved raw HTML to {debug_path}")
 
+    # One-line structural diagnostics — helps identify teams whose schedule
+    # page has more events than rendered game tables (typically caused by
+    # collapsed event sections in Perfect Game's RadGrid).
+    _diag_sched_tables = soup.find_all("table", id=re.compile(r"rgSchedule", re.I))
+    _diag_event_tables = soup.find_all("table", id=re.compile(r"rgEvent", re.I))
+    _diag_event_links = soup.find_all(
+        "a", href=re.compile(r"/events/Default\.aspx\?event=", re.I)
+    )
+    _diag_game_links = soup.find_all(
+        "a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I)
+    )
+    print(
+        f"  [diag] {team_name}: rgSchedule={len(_diag_sched_tables)} "
+        f"rgEvent={len(_diag_event_tables)} "
+        f"event_links={len(_diag_event_links)} "
+        f"game_links={len(_diag_game_links)}"
+    )
+
+    # If the page advertises more events than it has rendered rgEvent
+    # tables, something is collapsed — stash the raw HTML so we can
+    # inspect it via a workflow artifact.
+    if len(_diag_event_links) > max(1, len(_diag_event_tables)):
+        os.makedirs("debug_html", exist_ok=True)
+        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", team_name)
+        debug_path = f"debug_html/{safe_name}.html"
+        try:
+            with open(debug_path, "w") as f:
+                f.write(html)
+            print(f"  [diag] saved collapsed-event HTML to {debug_path}")
+        except OSError as e:
+            print(f"  [diag] failed to save debug HTML: {e}")
+
     # --- Step 1: Find the rgSchedule RadGrid table by ID ---
     schedule_table = soup.find("table", id=re.compile(r"rgSchedule.*_ctl00$", re.I))
     if schedule_table:
