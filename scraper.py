@@ -352,7 +352,8 @@ def parse_schedule(html, team_name, team_url):
 
     # One-line structural diagnostics — helps identify teams whose schedule
     # page has more events than rendered game tables (typically caused by
-    # collapsed event sections in Perfect Game's RadGrid).
+    # collapsed event sections in Perfect Game's RadGrid, which
+    # fetch_team_schedule_html automatically expands via postback).
     _diag_sched_tables = soup.find_all("table", id=re.compile(r"rgSchedule", re.I))
     _diag_event_tables = soup.find_all("table", id=re.compile(r"rgEvent", re.I))
     _diag_event_links = soup.find_all(
@@ -367,57 +368,6 @@ def parse_schedule(html, team_name, team_url):
         f"event_links={len(_diag_event_links)} "
         f"game_links={len(_diag_game_links)}"
     )
-
-    # If the page advertises more events than it has rendered rgEvent
-    # tables, something is collapsed — stash the raw HTML so we can
-    # inspect it via a workflow artifact.
-    if len(_diag_event_links) > max(1, len(_diag_event_tables)):
-        os.makedirs("debug_html", exist_ok=True)
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", team_name)
-        debug_path = f"debug_html/{safe_name}.html"
-        try:
-            with open(debug_path, "w") as f:
-                f.write(html)
-            print(f"  [diag] saved collapsed-event HTML to {debug_path}")
-        except OSError as e:
-            print(f"  [diag] failed to save debug HTML: {e}")
-
-        # Extract postback / form info so we can see how PG expects the
-        # "See All Games" / expand-section controls to be invoked.
-        form = soup.find("form")
-        if form:
-            action = form.get("action", "")
-            print(f"  [diag] form action='{action[:120]}'")
-        for hidden_id in ("__VIEWSTATE", "__VIEWSTATEGENERATOR",
-                          "__EVENTVALIDATION", "__EVENTTARGET", "__EVENTARGUMENT"):
-            el = soup.find("input", {"name": hidden_id})
-            if el is not None:
-                val = (el.get("value") or "")
-                print(f"  [diag] hidden {hidden_id}: present len={len(val)}")
-        # Find controls whose text mentions expand/see all/hide all
-        for a in soup.find_all(["a", "input", "button"]):
-            label = (a.get_text(strip=True) or a.get("value") or "").lower()
-            if any(kw in label for kw in ("see all games", "hide all games",
-                                           "expand all", "show all")):
-                href = a.get("href", "")
-                cid = a.get("id", "")
-                name = a.get("name", "")
-                onclick = a.get("onclick", "")
-                print(f"  [diag] control label='{label[:40]}' "
-                      f"id='{cid}' name='{name}' "
-                      f"href='{href[:120]}' onclick='{onclick[:160]}'")
-        # Look for any __doPostBack calls involving rgSchedule (row expansions)
-        postback_targets = set()
-        for script_or_attr in soup.find_all(True):
-            for attr_val in (script_or_attr.get("href", ""),
-                             script_or_attr.get("onclick", "")):
-                if "__doPostBack" in attr_val and "rgSchedule" in attr_val:
-                    m = re.search(r"__doPostBack\(['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]*)['\"]",
-                                  attr_val)
-                    if m:
-                        postback_targets.add((m.group(1), m.group(2)))
-        for tgt, arg in sorted(postback_targets)[:8]:
-            print(f"  [diag] postback target='{tgt}' arg='{arg}'")
 
     # --- Step 1: Find the rgSchedule RadGrid table by ID ---
     schedule_table = soup.find("table", id=re.compile(r"rgSchedule.*_ctl00$", re.I))
