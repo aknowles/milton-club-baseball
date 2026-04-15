@@ -16,7 +16,7 @@ import sys
 import time
 from collections import OrderedDict
 from datetime import datetime, date, timedelta
-from urllib.parse import parse_qs, quote, urlparse, unquote_plus
+from urllib.parse import parse_qs, quote, urljoin, urlparse, unquote_plus
 
 import requests
 from bs4 import BeautifulSoup
@@ -213,24 +213,54 @@ def fetch_team_schedule_html(url):
         print("  [expand] no 'See All Games' postback target found; skipping expand")
         return html
 
-    # Stash the WebForms hidden fields we need to submit alongside.
+    # Locate the enclosing <form> and harvest every form field so our POST
+    # looks like a real browser submission. Missing fields are the most
+    # common reason an ASP.NET postback no-ops silently.
+    form = soup.find("form")
+    if form is None:
+        print("  [expand] no <form> element found; skipping expand")
+        return html
+
     form_data = {}
-    for name in (
-        "__VIEWSTATE",
-        "__VIEWSTATEGENERATOR",
-        "__EVENTVALIDATION",
-        "__VIEWSTATEENCRYPTED",
-    ):
-        el = soup.find("input", {"name": name})
-        if el is not None and el.get("value") is not None:
-            form_data[name] = el["value"]
+    for inp in form.find_all("input"):
+        name = inp.get("name")
+        if not name:
+            continue
+        itype = (inp.get("type") or "text").lower()
+        if itype in ("submit", "button", "image", "reset"):
+            continue
+        if itype in ("checkbox", "radio"):
+            if inp.has_attr("checked"):
+                form_data[name] = inp.get("value", "on")
+            continue
+        form_data[name] = inp.get("value", "") or ""
+    for sel in form.find_all("select"):
+        name = sel.get("name")
+        if not name:
+            continue
+        selected = sel.find("option", selected=True) or sel.find("option")
+        if selected is not None:
+            form_data[name] = selected.get("value", selected.get_text(strip=True))
+    for ta in form.find_all("textarea"):
+        name = ta.get("name")
+        if name:
+            form_data[name] = ta.get_text() or ""
+
     if "__VIEWSTATE" not in form_data:
         print("  [expand] no __VIEWSTATE in initial page; skipping expand")
         return html
+
     form_data["__EVENTTARGET"] = target
     form_data["__EVENTARGUMENT"] = ""
 
-    print(f"  [expand] replaying See All Games postback (target={target})")
+    # Resolve the form's action URL (usually "./default.aspx?..." which is
+    # equivalent to the team URL).
+    post_url = urljoin(url, form.get("action") or url)
+
+    print(
+        f"  [expand] replaying See All Games postback "
+        f"(target={target}, fields={len(form_data)}, post_url={post_url})"
+    )
     time.sleep(1.0)  # polite pause between GET and follow-up POST
 
     post_headers = {
@@ -239,9 +269,10 @@ def fetch_team_schedule_html(url):
         "Accept-Language": "en-US,en;q=0.5",
         "Content-Type": "application/x-www-form-urlencoded",
         "Referer": url,
+        "Origin": "https://www.perfectgame.org",
     }
     try:
-        resp = session.post(url, data=form_data, headers=post_headers, timeout=30)
+        resp = session.post(post_url, data=form_data, headers=post_headers, timeout=30)
         resp.raise_for_status()
     except requests.RequestException as e:
         print(f"  [expand] postback failed: {e} — using initial HTML")
@@ -254,9 +285,22 @@ def fetch_team_schedule_html(url):
     new_game_links = new_soup.find_all(
         "a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I)
     )
+    # Also look at whether the "Hide All Games" link is now present and
+    # "See All Games" isn't — another reliable signal that the server
+    # actually toggled the state.
+    has_hide = bool(
+        new_soup.find(lambda t: t.name == "a"
+                      and t.get_text(strip=True).lower() == "hide all games")
+    )
+    has_see = bool(
+        new_soup.find(lambda t: t.name == "a"
+                      and t.get_text(strip=True).lower() == "see all games")
+    )
     print(
         f"  [expand] post-expand rgEvent={len(new_event_tables)} "
-        f"game_links={len(new_game_links)}"
+        f"game_links={len(new_game_links)} "
+        f"has_hide_link={has_hide} has_see_link={has_see} "
+        f"bytes={len(expanded_html)}"
     )
     if len(new_event_tables) <= len(event_tables):
         print("  [expand] postback did not increase event tables — keeping initial HTML")
