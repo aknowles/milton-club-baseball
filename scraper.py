@@ -28,7 +28,7 @@ from icalendar import Calendar, Event, vText
 
 TIMEZONE = "US/Eastern"
 USER_AGENT = "Milton-Club-Baseball-Scraper/1.0 (GitHub Actions; +https://github.com/aknowles/milton-club-baseball)"
-REQUEST_DELAY = 2.5  # seconds between requests – be polite
+REQUEST_DELAY = 5.0  # seconds between requests – be polite
 DEBUG = os.environ.get("SCRAPER_DEBUG", "0") == "1"
 
 
@@ -460,7 +460,7 @@ def parse_roster(html, team_name):
             if "roster" in txt and "schedule" not in txt:
                 roster_table = heading.find_next("table")
                 if roster_table:
-                    print(f"  [roster] Found roster table via heading '{heading.get_text(strip=True)}' for {team_name}")
+                    debug_log(f"[roster] Found roster table via heading for {team_name}")
                     break
     if not roster_table:
         # Try any RadGrid table that isn't the schedule
@@ -468,7 +468,7 @@ def parse_roster(html, team_name):
             tid = tbl.get("id", "")
             if "schedule" not in tid.lower() and "event" not in tid.lower():
                 roster_table = tbl
-                print(f"  [roster] Using fallback RadGrid table for {team_name}: id='{tid}'")
+                debug_log(f"[roster] Using fallback RadGrid table for {team_name}: id='{tid}'")
                 break
     if not roster_table:
         # Log all table IDs to help debug
@@ -477,7 +477,7 @@ def parse_roster(html, team_name):
         print(f"  [roster] No roster table found for {team_name}. Table IDs on page: {table_ids}")
         return players
 
-    print(f"  [roster] Found roster table for {team_name}: id='{roster_table.get('id', '')}'")
+    debug_log(f"[roster] Found roster table for {team_name}: id='{roster_table.get('id', '')}'")
 
     # Find header row to determine column mapping
     header_row = roster_table.find("tr", class_=re.compile(r"rgHeader", re.I))
@@ -549,7 +549,7 @@ def parse_roster(html, team_name):
             players.append(player)
             debug_log(f"  Roster: {player}")
 
-    print(f"  Found {len(players)} roster players for {team_name}")
+    debug_log(f"Found {len(players)} roster players for {team_name}")
     return players
 
 
@@ -2199,7 +2199,7 @@ def main():
             # Also scrape roster from the same page
             roster = parse_roster(html, name)
             if roster:
-                print(f"  Found {len(roster)} roster entries for {name}: {[p.get('name','?') for p in roster[:3]]}...")
+                print(f"  Found {len(roster)} roster entries for {name}")
                 rosters_by_team[name] = roster
             else:
                 print(f"  No roster found on page for {name}")
