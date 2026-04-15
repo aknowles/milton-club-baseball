@@ -136,7 +136,7 @@ def get_travel_distance(config, address, geocode_cache):
 # Fetching
 # ---------------------------------------------------------------------------
 
-def fetch_page(url, retries=2, backoff=3.0):
+def fetch_page(url, retries=2, backoff=3.0, session=None):
     """Fetch a page with a standard User-Agent and return the HTML text.
 
     Retries transient network errors (timeouts, connection errors) a few
@@ -148,10 +148,11 @@ def fetch_page(url, retries=2, backoff=3.0):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
     }
+    getter = session.get if session is not None else requests.get
     last_exc = None
     for attempt in range(retries + 1):
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            resp = getter(url, headers=headers, timeout=30)
             resp.raise_for_status()
             return resp.text
         except (requests.Timeout, requests.ConnectionError) as e:
@@ -164,6 +165,103 @@ def fetch_page(url, retries=2, backoff=3.0):
             raise
     # Unreachable, but keep linters happy
     raise last_exc  # pragma: no cover
+
+
+def fetch_team_schedule_html(url):
+    """Fetch a Perfect Game team schedule page, expanding all event sections.
+
+    Perfect Game's team page is an ASP.NET WebForms page whose event
+    sections are collapsed by default. A team in multiple events (e.g. a
+    tournament + a league) only has one event's nested rgEvent table
+    rendered in the initial HTML; the rest are revealed by clicking
+    "See All Games", which fires a __doPostBack to the server.
+
+    We detect the collapsed condition (more event-header links than
+    nested rgEvent tables) and replay that postback ourselves, reusing
+    the session cookies and the __VIEWSTATE / __VIEWSTATEGENERATOR
+    hidden fields from the initial GET. If anything fails along the way
+    we fall back to the original HTML so single-event teams are
+    unaffected.
+    """
+    session = requests.Session()
+    html = fetch_page(url, session=session)
+
+    soup = BeautifulSoup(html, "html.parser")
+    event_links = soup.find_all(
+        "a", href=re.compile(r"/events/Default\.aspx\?event=", re.I)
+    )
+    event_tables = soup.find_all("table", id=re.compile(r"rgEvent", re.I))
+
+    # If the page already renders at least as many rgEvent tables as it
+    # advertises event-header links, nothing is collapsed — return as-is.
+    if len(event_links) <= max(1, len(event_tables)):
+        return html
+
+    # Locate the "See All Games" anchor and pull its __doPostBack target
+    target = None
+    for a in soup.find_all("a"):
+        if a.get_text(strip=True).lower() != "see all games":
+            continue
+        m = re.search(
+            r"__doPostBack\(['\"]([^'\"]+)['\"]",
+            a.get("href", "") or a.get("onclick", ""),
+        )
+        if m:
+            target = m.group(1)
+            break
+    if not target:
+        print("  [expand] no 'See All Games' postback target found; skipping expand")
+        return html
+
+    # Stash the WebForms hidden fields we need to submit alongside.
+    form_data = {}
+    for name in (
+        "__VIEWSTATE",
+        "__VIEWSTATEGENERATOR",
+        "__EVENTVALIDATION",
+        "__VIEWSTATEENCRYPTED",
+    ):
+        el = soup.find("input", {"name": name})
+        if el is not None and el.get("value") is not None:
+            form_data[name] = el["value"]
+    if "__VIEWSTATE" not in form_data:
+        print("  [expand] no __VIEWSTATE in initial page; skipping expand")
+        return html
+    form_data["__EVENTTARGET"] = target
+    form_data["__EVENTARGUMENT"] = ""
+
+    print(f"  [expand] replaying See All Games postback (target={target})")
+    time.sleep(1.0)  # polite pause between GET and follow-up POST
+
+    post_headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": url,
+    }
+    try:
+        resp = session.post(url, data=form_data, headers=post_headers, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [expand] postback failed: {e} — using initial HTML")
+        return html
+
+    expanded_html = resp.text
+    # Sanity check: confirm the postback actually expanded something.
+    new_soup = BeautifulSoup(expanded_html, "html.parser")
+    new_event_tables = new_soup.find_all("table", id=re.compile(r"rgEvent", re.I))
+    new_game_links = new_soup.find_all(
+        "a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I)
+    )
+    print(
+        f"  [expand] post-expand rgEvent={len(new_event_tables)} "
+        f"game_links={len(new_game_links)}"
+    )
+    if len(new_event_tables) <= len(event_tables):
+        print("  [expand] postback did not increase event tables — keeping initial HTML")
+        return html
+    return expanded_html
 
 
 # ---------------------------------------------------------------------------
@@ -2261,7 +2359,7 @@ def main():
         print(f"Fetching schedule for {name}...")
 
         try:
-            html = fetch_page(url)
+            html = fetch_team_schedule_html(url)
             games = parse_schedule(html, name, url)
             all_games.extend(games)
 
