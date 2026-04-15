@@ -136,16 +136,34 @@ def get_travel_distance(config, address, geocode_cache):
 # Fetching
 # ---------------------------------------------------------------------------
 
-def fetch_page(url):
-    """Fetch a page with a standard User-Agent and return the HTML text."""
+def fetch_page(url, retries=2, backoff=3.0):
+    """Fetch a page with a standard User-Agent and return the HTML text.
+
+    Retries transient network errors (timeouts, connection errors) a few
+    times with linear backoff before giving up. HTTP 4xx/5xx responses are
+    raised immediately via raise_for_status.
+    """
     headers = {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
     }
-    resp = requests.get(url, headers=headers, timeout=30)
-    resp.raise_for_status()
-    return resp.text
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            return resp.text
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_exc = e
+            if attempt < retries:
+                wait = backoff * (attempt + 1)
+                print(f"  transient fetch error ({e}); retrying in {wait:.0f}s...")
+                time.sleep(wait)
+                continue
+            raise
+    # Unreachable, but keep linters happy
+    raise last_exc  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
@@ -204,114 +222,69 @@ def parse_schedule(html, team_name, team_url):
         print(f"  WARNING: Could not find rgSchedule table for {team_name}")
         return games
 
-    # --- Step 2: Extract event info from the outer schedule grid ---
-    # The event link (e.g. "2026 11U PG New England League") is in the outer grid
+    # --- Step 2: Walk all rows of the outer schedule table, tracking the
+    # current event/league context as we go. Teams that play in multiple
+    # leagues or tournaments have multiple event-header rows, each followed
+    # by their own nested rgEvent table of game rows. We visit every <tr>
+    # descendant in document order, skip wrapper rows that merely contain
+    # a nested rgEvent table (their inner rows are visited separately),
+    # update the event context when we see a header row, and otherwise try
+    # to parse the row as a game.
     current_event = "Unknown Event"
     current_event_url = None
 
-    event_link = schedule_table.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
-    if event_link:
-        current_event = event_link.get_text(strip=True)
-        href = event_link.get("href", "")
+    def _resolve_event_url(href):
+        if not href:
+            return None
         if href.startswith("/"):
-            current_event_url = f"https://www.perfectgame.org{href}"
-        elif href.startswith("http"):
-            current_event_url = href
-        else:
-            current_event_url = f"https://www.perfectgame.org/{href}"
-        debug_log(f"Event: '{current_event}' URL: {current_event_url}")
+            return f"https://www.perfectgame.org{href}"
+        if href.startswith("http"):
+            return href
+        return f"https://www.perfectgame.org/{href}"
 
-    # --- Step 3: Find the inner rgEvent table (nested game details) ---
-    event_table = schedule_table.find("table", id=re.compile(r"rgEvent", re.I))
-    if event_table:
-        debug_log(f"Found rgEvent table: id='{event_table.get('id', '')}'")
-    else:
-        # Use the outer table if no nested one found
-        event_table = schedule_table
-        debug_log("No nested rgEvent table found, using outer table")
+    all_rows = schedule_table.find_all("tr")
+    debug_log(f"Walking {len(all_rows)} rows in rgSchedule")
 
-    # --- Step 4: Parse game rows from the event table ---
-    rows = event_table.find_all("tr", recursive=False)
-    if not rows:
-        # RadGrid may have tbody
-        tbody = event_table.find("tbody")
-        if tbody:
-            rows = tbody.find_all("tr", recursive=False)
-    debug_log(f"Processing {len(rows)} rows in event table")
+    for row_idx, row in enumerate(all_rows):
+        # Skip wrapper rows containing a nested rgEvent table — the inner
+        # <tr>s are enumerated separately by find_all("tr").
+        if row.find("table", id=re.compile(r"rgEvent", re.I)):
+            # But still pick up an event header link if it lives in this row.
+            ev_link = row.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
+            if ev_link:
+                current_event = ev_link.get_text(strip=True)
+                current_event_url = _resolve_event_url(ev_link.get("href", ""))
+                debug_log(f"Event: '{current_event}' URL: {current_event_url}")
+            continue
 
-    for row_idx, row in enumerate(rows):
         cells = row.find_all("td", recursive=False)
         if not cells:
             continue
 
         cell_texts = [c.get_text(strip=True) for c in cells]
-        if DEBUG and row_idx < 30:
-            debug_log(f"  Row[{row_idx}] cells={len(cells)}: {[t[:60] for t in cell_texts]}")
-            # Also log any nested tables/divs structure
-            for ci, c in enumerate(cells):
-                inner_divs = c.find_all("div", recursive=False)
-                inner_spans = c.find_all("span", recursive=False)
-                inner_links = c.find_all("a", recursive=False)
-                if inner_divs or inner_spans or inner_links:
-                    parts = []
-                    for d in inner_divs:
-                        parts.append(f"div:'{d.get_text(strip=True)[:40]}'")
-                    for s in inner_spans:
-                        parts.append(f"span:'{s.get_text(strip=True)[:40]}'")
-                    for a in inner_links:
-                        parts.append(f"a[{a.get('href','')[:50]}]:'{a.get_text(strip=True)[:30]}'")
-                    debug_log(f"    Cell[{ci}] children: {parts}")
-
-        # Skip empty rows or header rows
         full_text = " ".join(cell_texts)
         if not full_text.strip():
             continue
 
+        # Event header row: update context and move on.
+        ev_link = row.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
+        if ev_link:
+            current_event = ev_link.get_text(strip=True)
+            current_event_url = _resolve_event_url(ev_link.get("href", ""))
+            debug_log(f"Event: '{current_event}' URL: {current_event_url}")
+            continue
+
+        if DEBUG and row_idx < 60:
+            debug_log(f"  Row[{row_idx}] cells={len(cells)}: {[t[:60] for t in cell_texts]}")
+
         # Check if this row has a DiamondKast game link (indicates a game row)
         game_link = row.find("a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I))
 
-        # Try to parse the game data from cells
         game = parse_game_row(cells, cell_texts, full_text, game_link,
                               current_event, current_event_url, team_name, team_url)
         if game:
             games.append(game)
-            debug_log(f"  -> Parsed game: {game['title']} on {game['date']}")
-
-    # If no games found from the event table, try parsing ALL rows
-    # from the outer schedule table (different page structure)
-    if not games:
-        debug_log("No games from rgEvent, trying all rows in rgSchedule")
-        all_rows = schedule_table.find_all("tr")
-        debug_log(f"Trying {len(all_rows)} rows from outer table")
-        for row_idx, row in enumerate(all_rows):
-            cells = row.find_all("td", recursive=False)
-            if not cells:
-                continue
-            cell_texts = [c.get_text(strip=True) for c in cells]
-            full_text = " ".join(cell_texts)
-            if not full_text.strip():
-                continue
-
-            # Check for event header
-            ev_link = row.find("a", href=re.compile(r"/events/Default\.aspx\?event=", re.I))
-            if ev_link:
-                current_event = ev_link.get_text(strip=True)
-                href = ev_link.get("href", "")
-                if href.startswith("/"):
-                    current_event_url = f"https://www.perfectgame.org{href}"
-                else:
-                    current_event_url = href
-                continue
-
-            if DEBUG and row_idx < 30:
-                debug_log(f"  OuterRow[{row_idx}] cells={len(cells)}: {[t[:60] for t in cell_texts]}")
-
-            game_link = row.find("a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I))
-            game = parse_game_row(cells, cell_texts, full_text, game_link,
-                                  current_event, current_event_url, team_name, team_url)
-            if game:
-                games.append(game)
-                debug_log(f"  -> Parsed game: {game['title']} on {game['date']}")
+            debug_log(f"  -> Parsed game: {game['title']} on {game['date']} [{current_event}]")
 
     print(f"  Found {len(games)} games for {team_name}")
     return games
@@ -2207,6 +2180,11 @@ def main():
 
     all_games = []
     rosters_by_team = {}
+    # Teams whose fetch failed this run. We preserve their previous snapshot
+    # entries so we don't fire false "removed" change notifications, and we
+    # rehydrate their previous ICS from Pages so the published calendar
+    # survives the next deploy.
+    failed_teams = set()
 
     for i, team in enumerate(teams):
         url = team["url"]
@@ -2232,6 +2210,7 @@ def main():
                 print(f"  Saved page HTML to {debug_path} for debugging")
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
+            failed_teams.add(name)
             continue
 
         # Polite delay between requests
@@ -2285,6 +2264,32 @@ def main():
     # Change detection and ntfy notifications
     old_snapshot = load_previous_snapshot()
     new_snapshot = build_snapshot(games_by_team)
+
+    # For teams whose fetch failed this run, carry their previous snapshot
+    # entries forward so detect_changes doesn't flag every event as removed
+    # and spam ntfy. Also re-fetch the previously published ICS file so the
+    # Pages deploy doesn't drop the team's calendar.
+    if failed_teams:
+        base_url = config.get("base_url", "")
+        for team_name in sorted(failed_teams):
+            if team_name in old_snapshot:
+                new_snapshot[team_name] = old_snapshot[team_name]
+                print(f"  Preserving previous snapshot for {team_name} (fetch failed)")
+            if base_url:
+                slug = team_slug(team_name)
+                ics_path = f"calendars/{slug}.ics"
+                if os.path.exists(ics_path):
+                    continue
+                try:
+                    resp = requests.get(f"{base_url}/calendars/{slug}.ics", timeout=10)
+                    if resp.status_code == 200 and resp.content:
+                        with open(ics_path, "wb") as f:
+                            f.write(resp.content)
+                        print(f"  Preserved previous calendar {slug}.ics from Pages")
+                    else:
+                        print(f"  Could not fetch previous calendar for {team_name} (HTTP {resp.status_code})")
+                except Exception as e:
+                    print(f"  Could not fetch previous calendar for {team_name}: {e}")
 
     if not old_snapshot:
         # No previous snapshot — seed run. Save snapshot without sending
