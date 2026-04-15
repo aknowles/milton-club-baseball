@@ -11,6 +11,9 @@ body:
         - MDB Knights 11U Gold
         - MDB Knights 14U Blue
         - MDB Knights 11U Blue
+        - MDB Knights 13U Gold
+        - MDB Knights 13U Blue
+        - MDB Knights 10U Gold
         - Braintree Bandits 11U Mercado
     validations:
       required: true

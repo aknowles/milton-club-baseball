@@ -37,6 +37,9 @@ To receive notifications:
 | MDB Knights 11U Gold | 11U | `mdb-knights-11u-gold` |
 | MDB Knights 14U Blue | 14U | `mdb-knights-14u-blue` |
 | MDB Knights 11U Blue | 11U | `mdb-knights-11u-blue` |
+| MDB Knights 13U Gold | 13U | `mdb-knights-13u-gold` |
+| MDB Knights 13U Blue | 13U | `mdb-knights-13u-blue` |
+| MDB Knights 10U Gold | 10U | `mdb-knights-10u-gold` |
 | Braintree Bandits 11U Mercado | 11U | `braintree-bandits-11u-mercado` |
 
 Teams are configured in `config.json`. To add a team, add an entry with the Perfect Game team page URL, team name, year, and ntfy topic.
