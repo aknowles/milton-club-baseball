@@ -558,23 +558,23 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
             game_url = href
 
     # --- Score parsing ---
-    # Look for score patterns like "5-3", "W 5-3", "L 2-7", "5 - 3"
+    # Perfect Game prefixes completed-game scores with an explicit W/L/T
+    # (e.g. "W 10-5", "L 3-7", "T 4-4"). We *require* that prefix — without
+    # it we have no reliable way to tell whether the first number is ours or
+    # the opponent's, and we'd also match incidental dashes elsewhere in the
+    # row (time ranges like "3:00 PM - 5:00 PM", age divisions like "9-10U",
+    # tournament names, W/L records in standings, doubleheader "Game 1-2"
+    # labels, etc.).
     score = None
-    score_result = None  # "W", "L", or "T"
-    score_match = re.search(r"\b([WLT])?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text)
+    score_result = None
+    score_match = re.search(
+        r"(?:^|\s)([WLT])\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text
+    )
     if score_match:
-        prefix = score_match.group(1)
+        score_result = score_match.group(1).upper()
         runs_for = int(score_match.group(2))
         runs_against = int(score_match.group(3))
         score = f"{runs_for}-{runs_against}"
-        if prefix:
-            score_result = prefix.upper()
-        elif runs_for > runs_against:
-            score_result = "W"
-        elif runs_for < runs_against:
-            score_result = "L"
-        else:
-            score_result = "T"
         debug_log(f"  Score found: {score} ({score_result})")
 
     # --- Build title ---
