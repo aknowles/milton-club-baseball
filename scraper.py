@@ -558,22 +558,26 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
             game_url = href
 
     # --- Score parsing ---
-    # Perfect Game prefixes completed-game scores with an explicit W/L/T
-    # (e.g. "W 10-5", "L 3-7", "T 4-4"). We *require* that prefix — without
-    # it we have no reliable way to tell whether the first number is ours or
-    # the opponent's, and we'd also match incidental dashes elsewhere in the
-    # row (time ranges like "3:00 PM - 5:00 PM", age divisions like "9-10U",
-    # tournament names, W/L records in standings, doubleheader "Game 1-2"
-    # labels, etc.).
+    # Perfect Game formats completed-game scores as "W, 10-16 vs. Opp" or
+    # "L, 3-7 @ Opp" — letter result, comma, then *visitor score - home
+    # score* (regardless of which side is the subject team). We require the
+    # W/L/T prefix to avoid matching incidental dashes (time ranges like
+    # "3:00 PM - 5:00 PM", age divisions like "9-10U", W-L-T records like
+    # "(3-5-0)", doubleheader labels, etc.), and we flip the score based on
+    # the home/away context so the displayed score reads "ours-theirs".
     score = None
     score_result = None
     score_match = re.search(
-        r"(?:^|\s)([WLT])\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text
+        r"(?:^|\s)([WLT])[,\s]+(\d{1,2})\s*[-–]\s*(\d{1,2})\b", full_text
     )
     if score_match:
         score_result = score_match.group(1).upper()
-        runs_for = int(score_match.group(2))
-        runs_against = int(score_match.group(3))
+        runs_visitor = int(score_match.group(2))
+        runs_home = int(score_match.group(3))
+        if home_away == "@":
+            runs_for, runs_against = runs_visitor, runs_home
+        else:
+            runs_for, runs_against = runs_home, runs_visitor
         score = f"{runs_for}-{runs_against}"
         debug_log(f"  Score found: {score} ({score_result})")
 
