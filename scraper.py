@@ -422,7 +422,12 @@ def parse_schedule(html, team_name, team_url):
         if not cells:
             continue
 
-        cell_texts = [c.get_text(strip=True) for c in cells]
+        # Use " " as the separator so PG's frequent <br> tags become real
+        # whitespace in the extracted text. Without this, BeautifulSoup
+        # squashes "W, 10-16<br>vs. Opponent" down to "W,10-16vs.Opponent",
+        # which breaks the trailing word boundary on the score regex and
+        # also fuses date parts ("Apr<br>11<br>Sat" → "Apr11Sat").
+        cell_texts = [c.get_text(" ", strip=True) for c in cells]
         full_text = " ".join(cell_texts)
         if not full_text.strip():
             continue
@@ -509,9 +514,12 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         is_allday = True
 
     # --- Home/Away ---
+    # Match a standalone "@" (as a word — preceded and followed by non-word
+    # characters). \b@\b doesn't work because \b requires a word/non-word
+    # boundary, and "@" is non-word on both sides of any surrounding space.
     if re.search(r"\bvs\.?\b", full_text, re.I):
         home_away = "vs."
-    elif re.search(r"\b@\b", full_text):
+    elif re.search(r"(?<!\w)@(?!\w)", full_text):
         home_away = "@"
     else:
         home_away = "vs."
