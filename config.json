@@ -54,6 +54,13 @@
       "year": 2026,
       "ntfy_topic": "braintree-bandits-11u-mercado",
       "snack_signup": false
+    },
+    {
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270154&Year=2026",
+      "team_name": "MDB Knights 12U Gold",
+      "year": 2026,
+      "ntfy_topic": "mdb-knights-12u-gold",
+      "snack_signup": false
     }
   ],
   "notify_level": "important",
@@ -99,6 +106,11 @@
       "blackout_dates": []
     },
     "Braintree Bandits 11U Mercado": {
+      "adhoc": [],
+      "modifications": [],
+      "blackout_dates": []
+    },
+    "MDB Knights 12U Gold": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
@@ -203,6 +215,7 @@
     "MDB Knights 13U Gold": [],
     "MDB Knights 13U Blue": [],
     "MDB Knights 10U Gold": [],
-    "Braintree Bandits 11U Mercado": []
+    "Braintree Bandits 11U Mercado": [],
+    "MDB Knights 12U Gold": []
   }
 }
