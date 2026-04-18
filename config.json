@@ -61,6 +61,13 @@
       "year": 2026,
       "ntfy_topic": "mdb-knights-12u-gold",
       "snack_signup": false
+    },
+    {
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270155&Year=2026",
+      "team_name": "MDB Knights 12U Blue",
+      "year": 2026,
+      "ntfy_topic": "mdb-knights-12u-blue",
+      "snack_signup": false
     }
   ],
   "notify_level": "important",
@@ -111,6 +118,11 @@
       "blackout_dates": []
     },
     "MDB Knights 12U Gold": {
+      "adhoc": [],
+      "modifications": [],
+      "blackout_dates": []
+    },
+    "MDB Knights 12U Blue": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
@@ -216,6 +228,7 @@
     "MDB Knights 13U Blue": [],
     "MDB Knights 10U Gold": [],
     "Braintree Bandits 11U Mercado": [],
-    "MDB Knights 12U Gold": []
+    "MDB Knights 12U Gold": [],
+    "MDB Knights 12U Blue": []
   }
 }
