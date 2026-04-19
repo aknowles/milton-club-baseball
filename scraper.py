@@ -1002,7 +1002,7 @@ def save_snapshot(snapshot, path="calendars/snapshot.json"):
         json.dump(snapshot, f, indent=2, default=str)
 
 
-def build_snapshot(games_by_team):
+def build_snapshot(games_by_team, config=None):
     """Build a dict snapshot of games keyed by team, then by uid.
 
     UIDs are based on date + opponent only (not time), so that time changes
@@ -1023,12 +1023,18 @@ def build_snapshot(games_by_team):
             seq = key_counts[base_key]
             uid = base_key if seq == 1 else f"{base_key}-{seq}"
             time_str = g["time"].strftime("%I:%M %p") if g.get("time") else "TBD"
+            override_status = ""
+            if config is not None and not g.get("is_practice"):
+                override = get_game_override(config, team_name, g["date"])
+                if override:
+                    override_status = (override.get("status") or "").lower()
             team_events[uid] = {
                 "title": g["title"],
                 "date": date_str,
                 "time": time_str,
                 "location": g.get("location") or "",
                 "opponent": opponent,
+                "override_status": override_status,
             }
         snapshot[team_name] = team_events
     return snapshot
@@ -1147,6 +1153,21 @@ def detect_changes(old_snapshot, new_snapshot):
                 new_e = new_events[uid]
                 if new_e["date"] < today_str:
                     continue  # skip past games
+                old_status = (old_e.get("override_status") or "").lower()
+                new_status = (new_e.get("override_status") or "").lower()
+                if old_status != new_status:
+                    if new_status == "cancelled":
+                        team_changes.append(
+                            f"Cancelled: {new_e['title']} on {new_e['date']}"
+                        )
+                    elif new_status == "postponed":
+                        team_changes.append(
+                            f"Postponed: {new_e['title']} on {new_e['date']}"
+                        )
+                    elif not new_status and old_status in ("cancelled", "postponed"):
+                        team_changes.append(
+                            f"Reinstated: {new_e['title']} on {new_e['date']} at {new_e['time']}"
+                        )
                 diffs = []
                 if old_e.get("time") != new_e.get("time"):
                     diffs.append(f"time {old_e['time']} -> {new_e['time']}")
@@ -1168,7 +1189,7 @@ def detect_changes(old_snapshot, new_snapshot):
                 # Mark existing entry as doubleheader
                 for i, d in enumerate(deduped):
                     if d == c and "(DH)" not in d:
-                        deduped[i] = d.replace("New: ", "New: (DH) ").replace("Removed: ", "Removed: (DH) ").replace("Changed: ", "Changed: (DH) ").replace("Rescheduled: ", "Rescheduled: (DH) ")
+                        deduped[i] = d.replace("New: ", "New: (DH) ").replace("Removed: ", "Removed: (DH) ").replace("Changed: ", "Changed: (DH) ").replace("Rescheduled: ", "Rescheduled: (DH) ").replace("Cancelled: ", "Cancelled: (DH) ").replace("Postponed: ", "Postponed: (DH) ").replace("Reinstated: ", "Reinstated: (DH) ")
                         break
 
         if deduped:
@@ -1391,6 +1412,18 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         event.add("uid", uid)
 
         event.add("dtstamp", datetime.utcnow())
+
+        # iCal STATUS + SEQUENCE so calendar clients reflect overrides
+        # (strikethrough for CANCELLED, tentative styling for postponed) and
+        # refresh cached event titles instead of keeping stale summaries.
+        if override_status == "CANCELLED":
+            event.add("status", "CANCELLED")
+            event.add("sequence", 2)
+        elif override_status == "POSTPONED":
+            event.add("status", "TENTATIVE")
+            event.add("sequence", 1)
+        else:
+            event.add("sequence", 0)
 
         cal.add_component(event)
 
@@ -2436,7 +2469,7 @@ def main():
 
     # Change detection and ntfy notifications
     old_snapshot = load_previous_snapshot()
-    new_snapshot = build_snapshot(games_by_team)
+    new_snapshot = build_snapshot(games_by_team, config=config)
 
     # For teams whose fetch failed this run, carry their previous snapshot
     # entries forward so detect_changes doesn't flag every event as removed
