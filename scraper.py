@@ -1293,13 +1293,32 @@ def send_ntfy(topic, title, message):
         print(f"  ntfy send failed for {topic}: {e}")
 
 
+def _is_minor_change(change):
+    """True if a change line is a "Changed:" entry with only location tweaks.
+
+    "Changed:" lines end with a parenthesised, comma-separated diff list like
+    ``(time 5:00 PM -> 6:00 PM, location -> Field 2)``.  A change is treated as
+    important whenever the diff list includes a time or opponent edit; pure
+    location text changes (Perfect Game often rewrites field names) are noisy
+    and remain filtered at notify_level=important.
+    """
+    if not change.startswith("Changed:"):
+        return False
+    paren_start = change.rfind("(")
+    paren_end = change.rfind(")")
+    if paren_start == -1 or paren_end <= paren_start:
+        return True
+    diffs = [d.strip() for d in change[paren_start + 1 : paren_end].split(",")]
+    return not any(d.startswith(("time ", "opponent ")) for d in diffs)
+
+
 def notify_changes(changes, config):
     """Send ntfy notifications for detected schedule changes.
 
     Respects the ``notify_level`` setting in config.json:
       - "all"       — notify on any change (default)
-      - "important" — only new games and cancellations, skip minor updates
-                      like time tweaks or location text changes
+      - "important" — new games, cancellations, reschedules, and time or
+                      opponent edits; skip pure location text tweaks
       - "none"      — suppress all push notifications
     """
     notify_level = config.get("notify_level", "all")
@@ -1318,8 +1337,7 @@ def notify_changes(changes, config):
             continue
 
         if notify_level == "important":
-            # Only keep new and removed games; drop minor "Changed:" updates
-            change_list = [c for c in change_list if not c.startswith("Changed:")]
+            change_list = [c for c in change_list if not _is_minor_change(c)]
 
         if not change_list:
             continue
