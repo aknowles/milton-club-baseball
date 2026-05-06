@@ -1297,10 +1297,11 @@ def notify_changes(changes, config):
     """Send ntfy notifications for detected schedule changes.
 
     Respects the ``notify_level`` setting in config.json:
-      - "all"       — notify on any change (default)
-      - "important" — only new games and cancellations, skip minor updates
-                      like time tweaks or location text changes
-      - "none"      — suppress all push notifications
+      - "none" — suppress all push notifications
+      - any other value — notify on every detected change
+
+    detect_changes only emits diffs for time, opponent, and location, all of
+    which warrant a push (a Milton venue can still be a 20-minute drive away).
     """
     notify_level = config.get("notify_level", "all")
     if notify_level == "none":
@@ -1314,16 +1315,8 @@ def notify_changes(changes, config):
 
     for team_name, change_list in changes.items():
         topic = team_topics.get(team_name)
-        if not topic:
+        if not topic or not change_list:
             continue
-
-        if notify_level == "important":
-            # Only keep new and removed games; drop minor "Changed:" updates
-            change_list = [c for c in change_list if not c.startswith("Changed:")]
-
-        if not change_list:
-            continue
-
         body = "\n".join(change_list)
         send_ntfy(topic, f"Schedule Update: {team_name}", body)
 
