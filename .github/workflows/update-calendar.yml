@@ -2,9 +2,13 @@ name: Update Baseball Calendar
 
 on:
   schedule:
-    # Once daily at 8 AM ET (UTC-4), March through July only — the active
-    # season. Outside those months, use workflow_dispatch to run manually.
-    - cron: '0 12 * 3-7 *'
+    # Four times daily at 6 AM, 11 AM, 4 PM, and 10 PM ET (UTC-4), March
+    # through July only — the active season. Outside those months, use
+    # workflow_dispatch to run manually.
+    - cron: '0 10 * 3-7 *'
+    - cron: '0 15 * 3-7 *'
+    - cron: '0 20 * 3-7 *'
+    - cron: '0 2 * 3-7 *'
   workflow_dispatch:
   push:
     branches: [main]
