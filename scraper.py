@@ -736,6 +736,41 @@ def parse_roster(html, team_name):
     return players
 
 
+_OPPONENT_TRAILING_TOKENS = re.compile(
+    # Cut at the earliest of: a (W-L) or (W-L-T) record, an age group like
+    # "11U", "Pool A", "Probable Pitchers", a "GameID" marker, or a separator
+    # "@" used between the opponent name and a field name.
+    r"\s+(?:"
+    r"\(\d+-\d+(?:-\d+)?\)"
+    r"|\d+[Uu]\b"
+    r"|Pool\s+[A-Z0-9]\b"
+    r"|Probable\b"
+    r"|GameID\b"
+    r"|@\s"
+    r")"
+)
+
+
+def clean_opponent_name(raw):
+    """Strip metadata that Perfect Game appends to the opponent's team name.
+
+    Schedule cells often contain the opponent name followed by their record,
+    division, pool, "Probable Pitchers", field name, and GameID, e.g.
+    "Rip City USA Palumbo (10-7-0) 11U Major Massachusetts (Major) Pool A
+    Probable Pitchers Beach Road Field @ Beach Road Field GameID: 1399385".
+    Truncate at the first metadata token so we keep just the team name —
+    otherwise daily record changes (9-7-0 → 10-7-0) keep firing spurious
+    "opponent changed" schedule notifications.
+    """
+    if not raw:
+        return raw
+    text = raw.strip()
+    m = _OPPONENT_TRAILING_TOKENS.search(text)
+    if m:
+        text = text[:m.start()]
+    return text.strip()
+
+
 def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
     """Extract the opponent name from the row cells."""
     # Strategy 1: Find cell right after "vs." or "@"
@@ -744,13 +779,13 @@ def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
             if i + 1 < len(cell_texts):
                 opp = cell_texts[i + 1].strip()
                 if opp and len(opp) > 1:
-                    return opp
+                    return clean_opponent_name(opp)
 
     # Strategy 2: Inline "vs." or "@" in a cell
     for t in cell_texts:
         match = re.search(r"(?:vs\.?|@)\s+(.+)", t, re.I)
         if match:
-            return match.group(1).strip()
+            return clean_opponent_name(match.group(1))
 
     # Strategy 3: Look for team-name-like text in cells (links to team pages)
     for cell in cells:
@@ -758,7 +793,7 @@ def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
         if link:
             text = link.get_text(strip=True)
             if text and len(text) > 2:
-                return text
+                return clean_opponent_name(text)
 
     return None
 
@@ -990,6 +1025,33 @@ def get_active_notices(config, event_date):
 NTFY_URL = "https://ntfy.sh"
 
 
+def _migrate_snapshot_opponents(snapshot):
+    """Rewrite legacy events whose ``opponent`` field includes trailing
+    metadata. Cleans the opponent, the title, and the date+opponent UID so the
+    next diff against a freshly-scraped snapshot doesn't see spurious changes.
+    """
+    for team_name, events in list(snapshot.items()):
+        # Sort by old uid for deterministic doubleheader sequence numbering.
+        items = sorted(events.items())
+        new_events = {}
+        key_counts = {}
+        for _old_uid, event in items:
+            old_opp = event.get("opponent") or "TBD"
+            new_opp = clean_opponent_name(old_opp) or "TBD"
+            if new_opp != old_opp:
+                event["opponent"] = new_opp
+                title = event.get("title")
+                if title and old_opp in title:
+                    event["title"] = title.replace(old_opp, new_opp, 1)
+            date_str = event.get("date") or ""
+            base_key = f"{date_str}-{new_opp}"
+            key_counts[base_key] = key_counts.get(base_key, 0) + 1
+            seq = key_counts[base_key]
+            new_uid = base_key if seq == 1 else f"{base_key}-{seq}"
+            new_events[new_uid] = event
+        snapshot[team_name] = new_events
+
+
 def load_previous_snapshot(path="calendars/snapshot.json"):
     """Load the previous calendar snapshot from a local file.
 
@@ -1011,6 +1073,12 @@ def load_previous_snapshot(path="calendars/snapshot.json"):
 
     total_events = sum(len(v) for v in snapshot.values()) if snapshot else 0
     print(f"Loaded previous snapshot: {len(snapshot)} teams, {total_events} events")
+
+    # Migrate legacy snapshots that captured bloated opponent strings (with
+    # records, divisions, GameIDs, etc. appended). Without this, the first run
+    # after the parsing fix would diff every game as an "opponent changed"
+    # event and flood subscribers with bogus notifications.
+    _migrate_snapshot_opponents(snapshot)
 
     # Normalise opponent field ("" → "TBD") for consistent comparison.
     for team, events in snapshot.items():
