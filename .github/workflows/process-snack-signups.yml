@@ -4,27 +4,36 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  issues: write
-  actions: write
+permissions: {}
 
 jobs:
   process:
+    # Only a repo owner, org member or collaborator can approve. Without the
+    # author_association check anyone with a GitHub account could approve
+    # their own issue and have it written to config.json on main.
     if: >-
       github.event.comment.body == '/approve' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      !github.event.issue.pull_request &&
       github.event.issue.state == 'open' &&
       startsWith(github.event.issue.title, '[Snacks]')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # commit config.json
+      issues: write    # comment on and close the issue
+      actions: write   # dispatch the calendar rebuild
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
 
+      # Issue text is untrusted: it reaches the script through environment
+      # variables only, never by interpolation into a shell command.
       - name: Process snack signup
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
@@ -32,13 +41,18 @@ jobs:
         run: python process_snacks_issue.py
 
       - name: Commit and push
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add config.json
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Snack update from issue #${{ github.event.issue.number }}"
-          # Retry push with rebase in case remote moved ahead
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "Snack update from issue #${ISSUE_NUMBER}"
+          # Retry with a rebase in case another approval landed first
           for i in 1 2 3; do
             git push && exit 0
             echo "Push failed, rebasing and retrying ($i/3)..."
@@ -49,7 +63,7 @@ jobs:
           exit 1
 
       - name: Trigger calendar rebuild
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -60,14 +74,14 @@ jobs:
             });
 
       - name: Close issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const title = context.payload.issue.title || '';
-            const isSwap = title.includes('[Snacks] Swap');
+            const isSwap = title.trim().toLowerCase().startsWith('[snacks] swap');
             const msg = isSwap
-              ? 'Snack swap approved and applied! The schedule will update on the next run.'
-              : 'Snack signup applied! It will appear on the calendar on the next scheduled run.';
+              ? 'Snack swap approved and applied! The calendar is rebuilding now.'
+              : 'Snack signup applied! The calendar is rebuilding now.';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -79,4 +93,17 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               state: 'closed'
+            });
+
+      - name: Report failure on the issue
+        if: failure()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `This request could not be fully applied. The [workflow log](${run}) says why. Edit the issue to fix it, then comment \`/approve\` again.`
             });

@@ -3,214 +3,145 @@
 Process a GitHub issue for snack signups and swaps.
 
 Parses the issue body (GitHub issue form format) and updates config.json.
-Triggered by the process-snack-signups workflow when an admin comments /approve.
+Triggered by the process-snack-signups workflow when a repo admin comments
+/approve on the issue.
+
+Issues arrive in two shapes with different headings: the pickers on the
+web page pre-fill one set, the GitHub issue templates produce another.
+Both are accepted.
 """
 
 import json
 import os
-import re
-import sys
-import urllib.request
 
+from issue_utils import (IssueError, fail, first_field, load_config,
+                         parse_date, parse_family_names, parse_issue_body,
+                         save_config)
+from ntfy import send_ntfy
 from teams import resolve_team_id, team_id
 
 
-def parse_issue_body(body):
-    """Parse GitHub issue form body into field dict."""
-    fields = {}
-    current_key = None
-    current_value_lines = []
-
-    for line in body.split("\n"):
-        header_match = re.match(r"^###\s+(.+)$", line.strip())
-        if header_match:
-            if current_key is not None:
-                fields[current_key] = "\n".join(current_value_lines).strip()
-            current_key = header_match.group(1).strip().lower().replace(" ", "_")
-            current_key = current_key.replace("(", "").replace(")", "")
-            current_key = re.sub(r"_+", "_", current_key).strip("_")
-            current_value_lines = []
-        elif current_key is not None:
-            current_value_lines.append(line)
-
-    if current_key is not None:
-        fields[current_key] = "\n".join(current_value_lines).strip()
-
-    return fields
-
-
-def load_config(path="config.json"):
-    with open(path, "r") as f:
-        return json.load(f)
-
-
-def save_config(config, path="config.json"):
-    with open(path, "w") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
-
-
-def send_ntfy(config, team, message_title, message_body):
-    """Send ntfy notification for a team."""
-    team_cfg = next((t for t in config.get("teams", []) if team_id(t) == team), None)
-    ntfy_topic = team_cfg.get("ntfy_topic") if team_cfg else None
-    if ntfy_topic:
-        try:
-            req = urllib.request.Request(
-                f"https://ntfy.sh/{ntfy_topic}",
-                data=message_body.encode("utf-8"),
-                headers={"Title": message_title, "Priority": "default", "Tags": "baseball"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                print(f"ntfy sent to {ntfy_topic}: {message_title}")
-        except Exception as e:
-            print(f"ntfy send failed for {ntfy_topic}: {e}")
-
-
-def process_signup(fields, config):
-    """Process a snack signup issue."""
-    team = resolve_team_id(config, fields.get("team", ""))
+def _resolve_team(fields, config):
+    raw_team = fields.get("team", "")
+    team = resolve_team_id(config, raw_team)
     if not team:
-        print(f"ERROR: Unknown or missing team '{fields.get('team', '')}'")
-        sys.exit(1)
+        raise IssueError(f"Unknown or missing team '{raw_team[:80]}'")
+    return team
 
-    date_val = fields.get("game_date", fields.get("date", ""))
-    if not date_val:
-        print("ERROR: No date specified")
-        sys.exit(1)
 
-    families_raw = fields.get("family_names", fields.get("families", ""))
-    if not families_raw or families_raw == "_No response_":
-        print("ERROR: No families specified")
-        sys.exit(1)
+def _one_family(fields, what, *keys):
+    names = parse_family_names(first_field(fields, *keys), what)
+    if len(names) != 1:
+        raise IssueError(f"{what}: exactly one family name is required")
+    return names[0]
 
-    families = [f.strip() for f in families_raw.split(",") if f.strip()]
+
+def _entry_for(team_snacks, date_val):
+    return next((e for e in team_snacks if e.get("date") == date_val), None)
+
+
+def apply_signup(fields, config):
+    """Apply a snack signup. Returns (team, ntfy_title, ntfy_body)."""
+    team = _resolve_team(fields, config)
+    date_val = parse_date(first_field(fields, "game_date", "date"), "Game date")
+    families = parse_family_names(
+        first_field(fields, "family_names", "families"))
     if not families:
-        print("ERROR: No valid family names after parsing")
-        sys.exit(1)
+        raise IssueError("No families specified")
 
-    snacks = config.setdefault("snacks", {})
-    team_snacks = snacks.setdefault(team, [])
-
-    # Check if there's already an entry for this date — merge families
-    existing = None
-    for entry in team_snacks:
-        if entry.get("date") == date_val:
-            existing = entry
-            break
-
+    team_snacks = config.setdefault("snacks", {}).setdefault(team, [])
+    existing = _entry_for(team_snacks, date_val)
     if existing:
         for fam in families:
-            if fam not in existing["families"]:
+            if fam not in existing.setdefault("families", []):
                 existing["families"].append(fam)
         print(f"Merged families into existing snack entry for {team} on {date_val}")
     else:
         team_snacks.append({"date": date_val, "families": families})
         print(f"Added snack signup for {team} on {date_val}: {families}")
 
-    save_config(config)
-    print("config.json updated successfully")
-
     family_str = ", ".join(families)
-    send_ntfy(config, team, f"Snack Signup: {date_val}", f"{family_str} signed up for snacks on {date_val}")
+    return (team, f"Snack Signup: {date_val}",
+            f"{family_str} signed up for snacks on {date_val}")
 
 
-def process_swap(fields, config):
-    """Process a snack swap — one family replaces another, with optional return swap."""
-    team = resolve_team_id(config, fields.get("team", ""))
-    if not team:
-        print(f"ERROR: Unknown or missing team '{fields.get('team', '')}'")
-        sys.exit(1)
+def apply_swap(fields, config):
+    """Apply a snack swap: one family replaces another, with an optional
+    return swap. Returns (team, ntfy_title, ntfy_body)."""
+    team = _resolve_team(fields, config)
+    family_name = _one_family(fields, "Your family name",
+                              "family_name", "your_family_name")
+    swap_with = _one_family(fields, "Family to replace",
+                            "swap_with_family", "replacing")
+    swap_to_date = parse_date(
+        first_field(fields, "swap_to_date", "date"), "Date")
+    current_raw = first_field(
+        fields, "currently_assigned_date", "they_take_your_date")
+    current_date = parse_date(current_raw, "Return date") if current_raw else ""
 
-    family_name = fields.get("family_name", "").strip()
-    if not family_name:
-        print("ERROR: No family name specified")
-        sys.exit(1)
+    if family_name == swap_with:
+        raise IssueError("A family can't swap with itself")
+    if current_date and current_date == swap_to_date:
+        raise IssueError("The two swap dates are the same")
 
-    swap_to_date = fields.get("swap_to_date", "").strip()
-    if not swap_to_date:
-        print("ERROR: No date specified")
-        sys.exit(1)
+    team_snacks = config.setdefault("snacks", {}).setdefault(team, [])
 
-    swap_with_family = fields.get("swap_with_family", "").strip()
-    if not swap_with_family or swap_with_family == "_No response_":
-        print("ERROR: No family to replace specified")
-        sys.exit(1)
-
-    current_date = fields.get("currently_assigned_date", "").strip()
-    if current_date == "_No response_":
-        current_date = ""
-
-    snacks = config.setdefault("snacks", {})
-    team_snacks = snacks.setdefault(team, [])
-
-    # Find entries
-    target_entry = None
-    current_entry = None
-    for entry in team_snacks:
-        if entry.get("date") == swap_to_date:
-            target_entry = entry
-        if current_date and entry.get("date") == current_date:
-            current_entry = entry
-
+    target_entry = _entry_for(team_snacks, swap_to_date)
     if not target_entry:
-        print(f"ERROR: No snack entry found for {team} on {swap_to_date}")
-        sys.exit(1)
+        raise IssueError(f"No snack entry found for {team} on {swap_to_date}")
+    if swap_with not in target_entry.get("families", []):
+        raise IssueError(f"{swap_with} is not assigned to {swap_to_date}")
 
-    if swap_with_family not in target_entry.get("families", []):
-        print(f"ERROR: {swap_with_family} is not assigned to {swap_to_date}")
-        sys.exit(1)
-
+    current_entry = None
     if current_date:
+        current_entry = _entry_for(team_snacks, current_date)
         if not current_entry:
-            print(f"ERROR: No snack entry found for {team} on {current_date}")
-            sys.exit(1)
+            raise IssueError(f"No snack entry found for {team} on {current_date}")
         if family_name not in current_entry.get("families", []):
-            print(f"ERROR: {family_name} is not assigned to {current_date}")
-            sys.exit(1)
+            raise IssueError(f"{family_name} is not assigned to {current_date}")
 
-    # On the target date: replace swap_with_family with family_name
-    target_entry["families"].remove(swap_with_family)
+    # On the target date: replace swap_with with family_name
+    target_entry["families"].remove(swap_with)
     if family_name not in target_entry["families"]:
         target_entry["families"].append(family_name)
 
-    # If return swap: also move swap_with_family onto the current date, remove family_name
-    if current_date and current_entry:
+    if current_entry:
+        # Return swap: swap_with takes family_name's old date
         current_entry["families"].remove(family_name)
-        if swap_with_family not in current_entry["families"]:
-            current_entry["families"].append(swap_with_family)
-        print(f"Swapped: {family_name} ({current_date}) <-> {swap_with_family} ({swap_to_date})")
-        ntfy_title = f"Snack Swap: {family_name} \u2194 {swap_with_family}"
-        ntfy_body = f"{family_name} ({current_date}) swapped with {swap_with_family} ({swap_to_date})"
-    else:
-        print(f"Swap: {family_name} replaces {swap_with_family} on {swap_to_date}")
-        ntfy_title = f"Snack Swap: {family_name} replaces {swap_with_family}"
-        ntfy_body = f"{family_name} replaces {swap_with_family} on {swap_to_date}"
+        if swap_with not in current_entry["families"]:
+            current_entry["families"].append(swap_with)
+        print(f"Swapped: {family_name} ({current_date}) <-> {swap_with} ({swap_to_date})")
+        return (team, f"Snack Swap: {family_name} ↔ {swap_with}",
+                f"{family_name} ({current_date}) swapped with {swap_with} ({swap_to_date})")
 
-    save_config(config)
-    print("config.json updated successfully")
-    send_ntfy(config, team, ntfy_title, ntfy_body)
+    print(f"Swap: {family_name} replaces {swap_with} on {swap_to_date}")
+    return (team, f"Snack Swap: {family_name} replaces {swap_with}",
+            f"{family_name} replaces {swap_with} on {swap_to_date}")
 
 
 def main():
     issue_body = os.environ.get("ISSUE_BODY", "")
     if not issue_body:
-        print("ERROR: No issue body found")
-        sys.exit(1)
-
+        fail("No issue body found")
     issue_title = os.environ.get("ISSUE_TITLE", "")
 
     fields = parse_issue_body(issue_body)
     print(f"Parsed fields: {json.dumps(fields, indent=2)}")
 
     config = load_config()
+    is_swap = issue_title.strip().lower().startswith("[snacks] swap")
+    try:
+        team, ntfy_title, ntfy_body = (
+            apply_swap(fields, config) if is_swap else apply_signup(fields, config))
+    except IssueError as e:
+        fail(str(e))
 
-    # Determine if this is a swap or a signup based on title
-    if "[Snacks] Swap" in issue_title:
-        process_swap(fields, config)
-    else:
-        process_signup(fields, config)
+    save_config(config)
+    print("config.json updated successfully")
+
+    team_cfg = next((t for t in config.get("teams", []) if team_id(t) == team), {})
+    if team_cfg.get("ntfy_topic"):
+        send_ntfy(team_cfg["ntfy_topic"], ntfy_title, ntfy_body)
 
 
 if __name__ == "__main__":

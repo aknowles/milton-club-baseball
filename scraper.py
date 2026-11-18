@@ -7,8 +7,6 @@ with lunch/snack signup and swap management.
 Deployed via GitHub Actions to GitHub Pages.
 """
 
-import base64
-import hashlib
 import json
 import math
 import os
@@ -16,13 +14,16 @@ import re
 import sys
 import time
 from collections import OrderedDict
-from datetime import datetime, date, timedelta
-from urllib.parse import parse_qs, quote, urljoin, urlparse, unquote_plus
+from datetime import date, datetime, timedelta, UTC
+from html import escape
+from urllib.parse import parse_qs, quote, unquote_plus, urljoin, urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event, vText
 
+from ntfy import send_ntfy
 from teams import slugify, team_display, team_id, team_label
 
 # ---------------------------------------------------------------------------
@@ -42,8 +43,39 @@ def debug_log(msg):
 
 
 def load_config(path="config.json"):
-    with open(path, "r") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def local_now(config=None):
+    """Current wall-clock time in the configured timezone, as a naive
+    datetime. Game dates are naive local times, and the CI runner's clock is
+    UTC, which is already "tomorrow" during evening games in the US."""
+    tz = ZoneInfo((config or {}).get("timezone", TIMEZONE))
+    return datetime.now(tz).replace(tzinfo=None)
+
+
+def esc(value):
+    """HTML-escape a value for use in element text or a quoted attribute.
+
+    Everything shown on the page that comes from Perfect Game, the practice
+    sheet, config.json or an issue form goes through this.
+    """
+    return escape(str(value), quote=True)
+
+
+def json_for_script(value):
+    """Serialise *value* for embedding inside an inline <script> block.
+
+    json.dumps alone leaves "</script>" and "<!--" intact, which would end
+    the script element early.
+    """
+    return (json.dumps(value)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029"))
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +118,7 @@ def load_geocode_cache():
     """Load the geocode cache from disk."""
     if os.path.exists(GEOCODE_CACHE_PATH):
         try:
-            with open(GEOCODE_CACHE_PATH, "r") as f:
+            with open(GEOCODE_CACHE_PATH) as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
@@ -498,7 +530,7 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
     else:
         month_str = date_match.group(1)
         day_str = date_match.group(2)
-        now = datetime.now()
+        now = local_now()
         try:
             if season_year:
                 # The page shows no year; the team's configured season is
@@ -518,7 +550,9 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
     is_allday = False
     if time_match:
         try:
-            game_time = datetime.strptime(time_match.group(1).strip(), "%I:%M %p")
+            game_time = datetime.strptime(
+                re.sub(r"\s*([AP]M)$", r" \1", time_match.group(1).strip().upper()),
+                "%I:%M %p")
         except ValueError:
             is_allday = True
     else:
@@ -730,7 +764,7 @@ def parse_roster(html, team_name):
                 player["grad_year"] = cell_texts[col_map["grad_year"]]
         else:
             # Fallback: guess based on cell count and content patterns
-            for i, text in enumerate(cell_texts):
+            for text in cell_texts:
                 if re.match(r"^\d{1,3}$", text) and "number" not in player:
                     player["number"] = text
                 elif len(text) > 3 and re.search(r"[a-zA-Z]{2,}", text) and "name" not in player:
@@ -745,6 +779,16 @@ def parse_roster(html, team_name):
 
     debug_log(f"Found {len(players)} roster players for {team_name}")
     return players
+
+
+def roster_family_names(roster):
+    """Sorted, de-duplicated surnames from a parsed roster."""
+    names = set()
+    for player in roster:
+        name = (player.get("name") or "").strip()
+        if name:
+            names.add(name.split()[-1])
+    return sorted(names)
 
 
 _OPPONENT_TRAILING_TOKENS = re.compile(
@@ -892,7 +936,7 @@ def parse_practice_sheet(html):
             continue
 
         current_time = None
-        for col, text in zip(columns, cells):
+        for col, text in zip(columns, cells, strict=False):
             if col is None:
                 continue
             kind, weekday = col
@@ -1245,9 +1289,6 @@ def get_active_notices(config, event_date):
 # ntfy.sh Notifications
 # ---------------------------------------------------------------------------
 
-NTFY_URL = "https://ntfy.sh"
-
-
 def _migrate_snapshot_opponents(snapshot):
     """Rewrite legacy events whose ``opponent`` field includes trailing
     metadata. Cleans the opponent, the title, and the date+opponent UID so the
@@ -1278,16 +1319,16 @@ def _migrate_snapshot_opponents(snapshot):
 def load_previous_snapshot(path="calendars/snapshot.json"):
     """Load the previous calendar snapshot from a local file.
 
-    In CI this file is restored from the GitHub Actions cache before the
-    scraper runs, so we just read it from disk.  Falls back to an empty
-    dict when the file doesn't exist (first run / cache miss).
+    In CI the workflow downloads the last published snapshot from GitHub
+    Pages before the scraper runs, so we just read it from disk. Falls back
+    to an empty dict when the file doesn't exist (first run).
     """
     if not os.path.exists(path):
         print(f"No previous snapshot found at {path} — first run or cache miss.")
         return {}
 
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             raw = f.read()
         snapshot = json.loads(raw)
     except (json.JSONDecodeError, OSError) as e:
@@ -1304,8 +1345,8 @@ def load_previous_snapshot(path="calendars/snapshot.json"):
     _migrate_snapshot_opponents(snapshot)
 
     # Normalise opponent field ("" → "TBD") for consistent comparison.
-    for team, events in snapshot.items():
-        for uid, data in events.items():
+    for events in snapshot.values():
+        for data in events.values():
             if not data.get("opponent"):
                 data["opponent"] = "TBD"
 
@@ -1367,7 +1408,7 @@ def build_snapshot(games_by_team, config=None):
     return snapshot
 
 
-def detect_changes(old_snapshot, new_snapshot):
+def detect_changes(old_snapshot, new_snapshot, today=None):
     """
     Compare old and new snapshots. Returns a tuple of:
       (changes, reschedules)
@@ -1376,7 +1417,7 @@ def detect_changes(old_snapshot, new_snapshot):
     ``{"team": str, "old_date": str, "new_date": str, "opponent": str}``
     dicts representing games that moved to a different date (same opponent).
     """
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = (today or local_now().date()).strftime("%Y-%m-%d")
     changes = {}
     reschedules = []
     all_teams = set(list(old_snapshot.keys()) + list(new_snapshot.keys()))
@@ -1576,32 +1617,6 @@ def migrate_snack_assignments(config, reschedules):
     return log
 
 
-def send_ntfy(topic, title, message):
-    """Send a push notification via ntfy.sh."""
-    # HTTP headers are latin-1 only; ntfy accepts RFC 2047 for anything else.
-    header_title = title
-    if not title.isascii():
-        encoded = base64.b64encode(title.encode("utf-8")).decode("ascii")
-        header_title = f"=?UTF-8?B?{encoded}?="
-    try:
-        resp = requests.post(
-            f"{NTFY_URL}/{topic}",
-            data=message.encode("utf-8"),
-            headers={
-                "Title": header_title,
-                "Priority": "default",
-                "Tags": "baseball",
-            },
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            print(f"  ntfy sent to {topic}: {title}")
-        else:
-            print(f"  ntfy error ({resp.status_code}): {resp.text[:200]}")
-    except Exception as e:  # a failed push must never fail the run
-        print(f"  ntfy send failed for {topic}: {e}")
-
-
 def notify_changes(changes, config):
     """Send ntfy notifications for detected schedule changes.
 
@@ -1641,9 +1656,8 @@ def save_rosters(rosters_by_team, path="calendars/rosters.json"):
 
 def make_calendar(games, config, cal_name="Milton Club Baseball"):
     """Generate an iCal calendar from the list of game dicts."""
-    from pytz import timezone as pytz_timezone
-
-    tz = pytz_timezone(config.get("timezone", TIMEZONE))
+    tz = ZoneInfo(config.get("timezone", TIMEZONE))
+    now = local_now(config)
 
     cal = Calendar()
     cal.add("prodid", "-//Milton Club Baseball//Perfect Game Schedule//EN")
@@ -1655,7 +1669,7 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 
     for game in games:
         event = Event()
-        is_past = game["date"] < datetime.now()
+        is_past = game["date"] < now
         emoji = get_event_emoji(game, config=config, is_past=is_past)
         effective_status, override_reason = get_effective_status(game, config)
         override_status = effective_status.upper()
@@ -1674,10 +1688,11 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
             event.add("dtstart", game["date"].date())
             event.add("dtend", game["date"].date() + timedelta(days=1))
         else:
-            start = tz.localize(game["date"].replace(
+            start = game["date"].replace(
                 hour=game["time"].hour,
-                minute=game["time"].minute
-            ))
+                minute=game["time"].minute,
+                tzinfo=tz,
+            )
             event.add("dtstart", start)
             event.add("dtend", start + timedelta(hours=duration_hrs))
 
@@ -1728,7 +1743,7 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         uid = f"{date_str}T{time_str}-{safe_team}-{safe_opp}@milton-club-baseball"
         event.add("uid", uid)
 
-        event.add("dtstamp", datetime.utcnow())
+        event.add("dtstamp", datetime.now(UTC))
 
         # iCal STATUS + SEQUENCE so calendar clients reflect overrides
         # (strikethrough for CANCELLED, tentative styling for postponed) and
@@ -1763,9 +1778,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     """Generate an index.html for GitHub Pages with calendar subscribe links."""
     rosters_by_team = rosters_by_team or {}
     base_url = config.get("base_url", "")
-    from pytz import timezone as pytz_timezone
-    tz = pytz_timezone(config.get("timezone", TIMEZONE))
+    tz = ZoneInfo(config.get("timezone", TIMEZONE))
     now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z")
+    now = local_now(config)
+    today = now.date()
 
     # Group games by team
     teams = {}
@@ -1791,10 +1807,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         team_cfg = team_configs.get(tid, {})
         team_name = games[0]["team_name"]
         # Unambiguous across seasons; issue forms resolve it back to the id
-        label = team_label(team_cfg) if team_cfg else team_name
-        display_name = team_display(team_cfg) if team_cfg else team_name
+        team_lbl = team_label(team_cfg) if team_cfg else team_name
         season = team_cfg.get("year", "")
-        upcoming = [g for g in games if g["date"].date() >= date.today()]
+        upcoming = [g for g in games if g["date"].date() >= today]
         upcoming.sort(key=lambda g: g["date"])
 
         # Check snack signup config for this team (needed in the games loop below)
@@ -1804,7 +1819,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         snack_dates_shown = set()
 
         # Show recent past games with results (last 3)
-        past = [g for g in games if g["date"] < datetime.now() and not g.get("is_practice")]
+        past = [g for g in games if g["date"] < now and not g.get("is_practice")]
         past.sort(key=lambda g: g["date"], reverse=True)
         past_with_results = [g for g in past if g.get("score_result") or get_game_result(config, tid, g["date"])]
         for g in past_with_results[:3]:
@@ -1812,10 +1827,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             emoji = get_event_emoji(g, config=config, is_past=True)
             result = g.get("score_result") or get_game_result(config, tid, g["date"])
             result_label = {"W": "Win", "L": "Loss", "T": "Tie"}.get(result, "")
-            score_str = f" ({g['score']})" if g.get("score") else ""
+            score_str = f" ({esc(g['score'])})" if g.get("score") else ""
             past_link = g.get("game_url") or g.get("event_url") or g.get("team_url") or ""
-            past_opp = g.get('opponent', 'TBD')
-            past_matchup = f'{g["home_away"]} <a href="{past_link}" target="_blank" class="game-link">{past_opp}</a>' if past_link else f'{g["home_away"]} {past_opp}'
+            past_opp = esc(g.get("opponent") or "TBD")
+            past_matchup = (
+                f'{g["home_away"]} <a href="{esc(past_link)}" target="_blank" rel="noopener" class="game-link">{past_opp}</a>'
+                if past_link else f'{g["home_away"]} {past_opp}')
             games_html += f"""
                 <div class="game-row game-past">
                     <span class="game-emoji">{emoji}</span>
@@ -1846,28 +1863,29 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 time_str = " / ".join(times)
                 # Use location from first game (usually same venue for DH)
                 loc_str = first.get("field_name") or first.get("location") or ""
-                opponent = first.get("opponent", "TBD")
+                opponent = first.get("opponent") or "TBD"
                 dh_label = f'<span class="dh-tag" title="Doubleheader — {len(day_games)} games on this day">DH</span>'
             else:
                 g = first
                 time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g.get("time") else "TBD"
                 loc_str = g.get("field_name") or g.get("location") or ""
-                opponent = g["title"] if g.get("is_practice") else g.get("opponent", "TBD")
+                opponent = g["title"] if g.get("is_practice") else (g.get("opponent") or "TBD")
                 dh_label = ""
+            opponent = esc(opponent)
 
             # Show snack tag once per day
             snack_tag = ""
             if snack_signup_enabled and date_key not in snack_dates_shown:
                 snack_families = get_snack_families(config, tid, first["date"])
                 if snack_families:
-                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
+                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {esc(", ".join(snack_families))}</span>'
                 else:
                     snack_tag = '<span class="snack-tag snack-needed">Needs lunch/snacks</span>'
                 snack_dates_shown.add(date_key)
             elif not snack_signup_enabled and date_key not in snack_dates_shown:
                 snack_families = get_snack_families(config, tid, first["date"])
                 if snack_families:
-                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
+                    snack_tag = f'<span class="snack-tag">Lunch/Snacks: {esc(", ".join(snack_families))}</span>'
                     snack_dates_shown.add(date_key)
 
             # Travel distance tag
@@ -1875,33 +1893,34 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             travel_threshold = config.get("travel_threshold_miles", 40)
             travel_miles = first.get("travel_miles")
             if travel_miles is not None and travel_miles >= travel_threshold:
-                home_name = config.get("home_location", {}).get("name", "home")
+                home_name = esc(config.get("home_location", {}).get("name", "home"))
                 travel_tag = f'<span class="travel-tag" title="~{round(travel_miles)} miles from {home_name}">\U0001F697 ~{round(travel_miles)} mi</span>'
 
             # Status (from manual override or scraped from PG)
             status, reason = get_effective_status(first, config)
+            reason = esc(reason)
             status_tag = ""
             row_class = "game-row"
             if status == "postponed":
-                label = "POSTPONED"
+                status_text = "POSTPONED"
                 tooltip = reason if reason else "This game has been postponed"
                 if reason:
-                    label += f": {reason}"
-                status_tag = f'<span class="status-tag status-postponed" title="{tooltip}">{label}</span>'
+                    status_text += f": {reason}"
+                status_tag = f'<span class="status-tag status-postponed" title="{tooltip}">{status_text}</span>'
                 row_class = "game-row game-postponed"
             elif status == "cancelled":
-                label = "CANCELLED"
+                status_text = "CANCELLED"
                 tooltip = reason if reason else "This game has been cancelled"
                 if reason:
-                    label += f": {reason}"
-                status_tag = f'<span class="status-tag status-cancelled" title="{tooltip}">{label}</span>'
+                    status_text += f": {reason}"
+                status_tag = f'<span class="status-tag status-cancelled" title="{tooltip}">{status_text}</span>'
                 row_class = "game-row game-cancelled"
 
             # Pick the best PG link: game-specific > event > team page
             pg_link = first.get("game_url") or first.get("event_url") or first.get("team_url") or ""
 
             if pg_link:
-                matchup_html = f'{first["home_away"]} <a href="{pg_link}" target="_blank" class="game-link">{opponent}</a> {dh_label}'
+                matchup_html = f'{first["home_away"]} <a href="{esc(pg_link)}" target="_blank" rel="noopener" class="game-link">{opponent}</a> {dh_label}'
             else:
                 matchup_html = f'{first["home_away"]} {opponent} {dh_label}'
 
@@ -1920,7 +1939,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             loc_html = ""
             if loc_str:
                 maps_url = f"https://www.google.com/maps/search/?api=1&query={quote(full_loc)}"
-                loc_html = f'<a class="game-location" href="{maps_url}" target="_blank" title="{full_loc}">\U0001F4CD {loc_str}</a>'
+                loc_html = f'<a class="game-location" href="{esc(maps_url)}" target="_blank" rel="noopener" title="{esc(full_loc)}">\U0001F4CD {esc(loc_str)}</a>'
 
             month_rows.setdefault(first["date"].strftime("%B %Y"), []).append(f"""
                 <div class="{row_class}">
@@ -1959,13 +1978,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
         event_label = ""
         if games and games[0].get("event_name") and not games[0].get("is_practice"):
-            event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
+            event_label = f'<span class="event-tag">{esc(games[0]["event_name"])}</span>'
 
         # Get roster data for snack picker (not displayed on page)
         team_roster = rosters_by_team.get(tid, [])
 
-        slug = tid
-        team_cal_url = f"{base_url}/calendars/{slug}.ics"
+        slug = esc(tid)
+        team_cal_url = esc(f"{base_url}/calendars/{tid}.ics")
 
         # Build snack signup picker (only for teams with snack_signup enabled)
         snack_signup_enabled = team_cfg.get("snack_signup", False)
@@ -1974,11 +1993,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         swap_picker_html = ""
         picker_id = f"snack-picker-{slug}"
         if snack_signup_enabled:
-            family_names = sorted(set(
-                p.get("name", "").strip().split()[-1]
-                for p in team_roster
-                if p.get("name", "").strip()
-            ))
+            family_names = sorted({esc(name) for name in roster_family_names(team_roster)})
             cbs_html = ""
             if family_names:
                 cbs = ""
@@ -1998,8 +2013,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             for g in upcoming:
                 d = g["date"].strftime("%Y-%m-%d")
                 if d not in seen_dates:
-                    label = g["date"].strftime("%b %d")
-                    date_options += f'<option value="{d}">{label}</option>'
+                    date_options += f'<option value="{d}">{g["date"].strftime("%b %d")}</option>'
                     seen_dates.add(d)
 
             family_input_label = "Other (not listed above):" if family_names else "Family Name(s):"
@@ -2018,9 +2032,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             <label style="font-size:12px; color:#555;">{family_input_label}</label><br>
                             <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
                         </div>
-                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{label}')">Submit Signup</button>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" data-picker="{picker_id}" data-team="{esc(team_lbl)}" onclick="submitSnackSignup(this.dataset.picker, this.dataset.team)">Submit Signup</button>
                     </div>"""
-            snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
+            snack_button_html = f'<button class="btn btn-snack" data-picker="{picker_id}" onclick="toggleSnackPicker(this.dataset.picker)">Sign Up for Snacks</button>'
 
             # Build swap picker with cascading dropdowns
             swap_picker_id = f"swap-picker-{slug}"
@@ -2032,7 +2046,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                         <strong style="font-size:13px;">Swap Lunch Day</strong>
                         <div style="margin:6px 0;">
                             <label style="font-size:12px; color:#555;">Your Family Name:</label>
-                            <select class="swap-your-family" data-picker="{swap_picker_id}" data-team="{tid}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapFamilyChange(this)">
+                            <select class="swap-your-family" data-picker="{swap_picker_id}" data-team="{slug}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapFamilyChange(this)">
                                 <option value="">Select family...</option>
                                 {family_options}
                             </select>
@@ -2060,22 +2074,22 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             <label style="font-size:12px; color:#555;">Notes (optional):</label><br>
                             <input type="text" class="swap-notes" data-picker="{swap_picker_id}" placeholder="e.g. Phillips can't make April 18" style="padding:3px 6px; font-size:13px; width:280px; margin-top:2px;">
                         </div>
-                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" onclick="submitSwapRequest('{swap_picker_id}', '{label}')">Submit Swap Request</button>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" data-picker="{swap_picker_id}" data-team="{esc(team_lbl)}" onclick="submitSwapRequest(this.dataset.picker, this.dataset.team)">Submit Swap Request</button>
                     </div>"""
-            snack_button_html += f' <button class="btn btn-snack" style="background:#3b82f6;" onclick="toggleSnackPicker(\'{swap_picker_id}\')">Swap Lunch Day</button>'
+            snack_button_html += f' <button class="btn btn-snack" style="background:#3b82f6;" data-picker="{swap_picker_id}" onclick="toggleSnackPicker(this.dataset.picker)">Swap Lunch Day</button>'
 
         # Build "Report Game Status" button link (pre-fills the issue template)
-        game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(label)}"
+        game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(team_lbl)}"
         game_status_btn = ""
         if n_games:
-            game_status_btn = f'<a class="btn btn-status" href="{game_status_url}" target="_blank">Report Postponed / Cancelled</a>'
+            game_status_btn = f'<a class="btn btn-status" href="{esc(game_status_url)}" target="_blank" rel="noopener">Report Postponed / Cancelled</a>'
 
-        ntfy_topic = team_cfg.get("ntfy_topic", "")
+        ntfy_topic = esc(team_cfg.get("ntfy_topic", ""))
         ntfy_html = ""
         if ntfy_topic:
             ntfy_html = f"""
-                <div class="ntfy-line">\U0001F514 Push alerts: <a href="https://ntfy.sh/{ntfy_topic}" target="_blank"><code>{ntfy_topic}</code></a>
-                    <button onclick="copyUrl('{ntfy_topic}')" title="Copy topic">&#128203;</button>
+                <div class="ntfy-line">\U0001F514 Push alerts: <a href="https://ntfy.sh/{ntfy_topic}" target="_blank" rel="noopener"><code>{ntfy_topic}</code></a>
+                    <button data-copy="{ntfy_topic}" onclick="copyUrl(this.dataset.copy)" title="Copy topic">&#128203;</button>
                 </div>"""
 
 
@@ -2086,13 +2100,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
         coach = team_cfg.get("coach")
         meta = " &middot; ".join(str(p) for p in (
-            f"Coach {coach}" if coach else "", season, upcoming_label) if p)
+            esc(f"Coach {coach}") if coach else "", esc(season), upcoming_label) if p)
         section_html = f"""
-        <div class="grade-section" data-team="{label}" data-org="{team_org}" data-age="{team_age}" data-season="{season}">
+        <div class="grade-section" data-team="{esc(team_lbl)}" data-org="{esc(team_org)}" data-age="{esc(team_age)}" data-season="{esc(season)}">
             <button class="collapsible" onclick="toggleSection(this)">
-                <span class="team-badge">{team_age or BASEBALL_SVG}</span>
+                <span class="team-badge">{esc(team_age) or BASEBALL_SVG}</span>
                 <div class="team-head">
-                    <span class="grade-title">{team_name}</span>
+                    <span class="grade-title">{esc(team_name)}</span>
                     <span class="grade-info">{meta}</span>
                 </div>
                 <span class="arrow">&#9660;</span>
@@ -2101,10 +2115,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 {event_label}
                 <div class="subscribe-url">
                     <code>{team_cal_url}</code>
-                    <button onclick="copyUrl('{team_cal_url}')" title="Copy URL">&#128203;</button>
+                    <button data-copy="{team_cal_url}" onclick="copyUrl(this.dataset.copy)" title="Copy URL">&#128203;</button>
                 </div>
                 <div class="buttons" style="margin-bottom: 12px;">
-                    <a class="btn btn-primary" href="webcal://{team_cal_url.replace('https://', '')}">Subscribe</a>
+                    <a class="btn btn-primary" href="webcal://{team_cal_url.removeprefix('https://')}">Subscribe</a>
                     <a class="btn btn-secondary" href="{team_cal_url}" download>Download .ics</a>
                     {snack_button_html}
                     {game_status_btn}
@@ -2137,12 +2151,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         if topic:
             ntfy_rows += f"""
                 <tr style="border-bottom:1px solid #ddd;">
-                    <td style="padding:8px 6px;">{team_label(team_cfg)}</td>
-                    <td style="padding:8px 6px;"><code>{topic}</code></td>
+                    <td style="padding:8px 6px;">{esc(team_label(team_cfg))}</td>
+                    <td style="padding:8px 6px;"><code>{esc(topic)}</code></td>
                 </tr>"""
 
     # Build snack assignments JSON for swap picker JavaScript
-    snacks_json = json.dumps(config.get("snacks", {}))
+    snacks_json = json_for_script(config.get("snacks", {}))
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2468,7 +2482,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             <li><strong>iPhone/iPad:</strong> Tap "Subscribe" button, or Settings &rarr; Calendar &rarr; Accounts &rarr; Add Subscribed Calendar</li>
             <li><strong>Outlook:</strong> Add calendar &rarr; Subscribe from web</li>
         </ul>
-        <p><strong>Tip:</strong> Calendars auto-update every 24 hours. Schedule data refreshes twice daily.</p>
+        <p><strong>Tip:</strong> Calendars auto-update every 24 hours. Schedule data refreshes several times a day in season.</p>
     </div>
 
     <div class="instructions" style="margin-top: 16px;">
@@ -2591,6 +2605,26 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
         }}
 
+        // localStorage throws in private windows and when site data is blocked
+        const safeStorage = {{
+            get: function(key) {{
+                try {{ return localStorage.getItem(key) || ''; }} catch (e) {{ return ''; }}
+            }},
+            set: function(key, value) {{
+                try {{
+                    if (value) localStorage.setItem(key, value);
+                    else localStorage.removeItem(key);
+                }} catch (e) {{ /* not persisted */ }}
+            }}
+        }};
+
+        // Replace the options of a select. Text is set through the DOM, never
+        // parsed as HTML, so names can't inject markup.
+        function setOptions(select, placeholder, items) {{
+            select.replaceChildren(new Option(placeholder, ''));
+            items.forEach(function(item) {{ select.add(new Option(item.text, item.value)); }});
+        }}
+
         // --- Filters (persisted in localStorage) ---
         (function() {{
             const sections = document.querySelectorAll('.grade-section[data-team]');
@@ -2606,23 +2640,31 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const bar = document.getElementById('filter-bar');
             if (!bar) return;
 
-            function makeSelect(id, label, options) {{
-                const saved = localStorage.getItem('mcb_filter_' + id) || '';
-                let html = '<div class="filter-group"><label>' + label + ':</label><select id="filter-' + id + '">';
-                html += '<option value="">All</option>';
+            function addSelect(id, label, options) {{
+                const saved = safeStorage.get('mcb_filter_' + id);
+                const group = document.createElement('div');
+                group.className = 'filter-group';
+                const labelEl = document.createElement('label');
+                labelEl.textContent = label + ':';
+                labelEl.htmlFor = 'filter-' + id;
+                const select = document.createElement('select');
+                select.id = 'filter-' + id;
+                select.add(new Option('All', ''));
                 options.forEach(function(o) {{
-                    html += '<option value="' + o + '"' + (o === saved ? ' selected' : '') + '>' + o + '</option>';
+                    select.add(new Option(o, o, false, o === saved));
                 }});
-                html += '</select></div>';
-                return html;
+                group.append(labelEl, select);
+                bar.append(group);
             }}
 
-            let barHtml = '';
-            if (orgs.length > 1) barHtml += makeSelect('org', 'Organization', orgs);
-            if (ages.length > 1) barHtml += makeSelect('age', 'Age Group', ages);
-            if (teamNames.length > 1) barHtml += makeSelect('team', 'Team', teamNames);
-            barHtml += '<button class="filter-clear" onclick="clearFilters()">Clear filters</button>';
-            bar.innerHTML = barHtml;
+            if (orgs.length > 1) addSelect('org', 'Organization', orgs);
+            if (ages.length > 1) addSelect('age', 'Age Group', ages);
+            if (teamNames.length > 1) addSelect('team', 'Team', teamNames);
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'filter-clear';
+            clearBtn.textContent = 'Clear filters';
+            clearBtn.addEventListener('click', function() {{ window.clearFilters(); }});
+            bar.append(clearBtn);
 
             function applyFilters() {{
                 const org = document.getElementById('filter-org');
@@ -2632,9 +2674,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 const ageVal = age ? age.value : '';
                 const teamVal = team ? team.value : '';
 
-                localStorage.setItem('mcb_filter_org', orgVal);
-                localStorage.setItem('mcb_filter_age', ageVal);
-                localStorage.setItem('mcb_filter_team', teamVal);
+                safeStorage.set('mcb_filter_org', orgVal);
+                safeStorage.set('mcb_filter_age', ageVal);
+                safeStorage.set('mcb_filter_team', teamVal);
 
                 sections.forEach(function(s) {{
                     let show = true;
@@ -2648,9 +2690,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             bar.addEventListener('change', applyFilters);
             window.clearFilters = function() {{
                 bar.querySelectorAll('select').forEach(function(sel) {{ sel.value = ''; }});
-                localStorage.removeItem('mcb_filter_org');
-                localStorage.removeItem('mcb_filter_age');
-                localStorage.removeItem('mcb_filter_team');
+                safeStorage.set('mcb_filter_org', '');
+                safeStorage.set('mcb_filter_age', '');
+                safeStorage.set('mcb_filter_team', '');
                 sections.forEach(function(s) {{ s.style.display = ''; }});
             }};
 
@@ -2685,7 +2727,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 '\\n\\n### Family Name(s)\\n\\n' + familyStr
             );
             const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-signup&title=' + title + '&body=' + body;
-            window.open(url, '_blank');
+            window.open(url, '_blank', 'noopener');
+        }}
+
+        function shortDate(isoDate) {{
+            const d = new Date(isoDate + 'T12:00:00');
+            return d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
         }}
 
         function onSwapFamilyChange(sel) {{
@@ -2697,11 +2744,11 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const currentDateSel = picker.querySelector('.swap-current-date');
 
             // Reset downstream
-            newDateSel.innerHTML = '<option value="">Select date...</option>';
+            setOptions(newDateSel, 'Select date...', []);
             newDateSel.disabled = true;
-            swapWithSel.innerHTML = '<option value="">Select family...</option>';
+            setOptions(swapWithSel, 'Select family...', []);
             swapWithSel.disabled = true;
-            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
+            setOptions(currentDateSel, 'None (no return swap)', []);
             currentDateSel.disabled = true;
 
             if (!familyName || !teamName) return;
@@ -2712,16 +2759,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 return entry.families && entry.families.some(function(f) {{ return f !== familyName; }});
             }});
             if (dates.length === 0) {{
-                newDateSel.innerHTML = '<option value="">No dates available</option>';
+                setOptions(newDateSel, 'No dates available', []);
                 return;
             }}
-            newDateSel.innerHTML = '<option value="">Select date...</option>';
-            dates.forEach(function(entry) {{
-                const d = new Date(entry.date + 'T12:00:00');
-                const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
-                const famList = entry.families.join(', ');
-                newDateSel.innerHTML += '<option value="' + entry.date + '">' + label + ' (' + famList + ')</option>';
-            }});
+            setOptions(newDateSel, 'Select date...', dates.map(function(entry) {{
+                return {{ value: entry.date, text: shortDate(entry.date) + ' (' + entry.families.join(', ') + ')' }};
+            }}));
             newDateSel.disabled = false;
         }}
 
@@ -2734,9 +2777,9 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const swapWithSel = picker.querySelector('.swap-with-family');
             const currentDateSel = picker.querySelector('.swap-current-date');
 
-            swapWithSel.innerHTML = '<option value="">Select family...</option>';
+            setOptions(swapWithSel, 'Select family...', []);
             swapWithSel.disabled = true;
-            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
+            setOptions(currentDateSel, 'None (no return swap)', []);
             currentDateSel.disabled = true;
 
             if (!newDateVal) return;
@@ -2749,22 +2792,18 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             const candidates = targetEntry.families.filter(function(f) {{ return f !== familyName; }});
             if (candidates.length === 0) return;
 
-            swapWithSel.innerHTML = '<option value="">Select family...</option>';
-            candidates.forEach(function(f) {{
-                swapWithSel.innerHTML += '<option value="' + f + '">' + f + '</option>';
-            }});
+            setOptions(swapWithSel, 'Select family...', candidates.map(function(f) {{
+                return {{ value: f, text: f }};
+            }}));
             swapWithSel.disabled = false;
 
             // Populate "They take your date" with requesting family's assigned dates
-            currentDateSel.innerHTML = '<option value="">None (no return swap)</option>';
             const assignedDates = teamSnacks.filter(function(entry) {{
                 return entry.date !== newDateVal && entry.families && entry.families.indexOf(familyName) !== -1;
             }});
-            assignedDates.forEach(function(entry) {{
-                const d = new Date(entry.date + 'T12:00:00');
-                const label = d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
-                currentDateSel.innerHTML += '<option value="' + entry.date + '">' + label + '</option>';
-            }});
+            setOptions(currentDateSel, 'None (no return swap)', assignedDates.map(function(entry) {{
+                return {{ value: entry.date, text: shortDate(entry.date) }};
+            }}));
             if (assignedDates.length > 0) {{
                 currentDateSel.disabled = false;
             }}
@@ -2805,7 +2844,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 (notes ? '\\n\\n### Notes\\n\\n' + notes : '');
 
             const url = 'https://github.com/aknowles/milton-club-baseball/issues/new?labels=snack-swap&title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
-            window.open(url, '_blank');
+            window.open(url, '_blank', 'noopener');
         }}
     </script>
 </body>
@@ -2857,14 +2896,18 @@ def main():
             roster = parse_roster(html, name)
             if roster:
                 print(f"  Found {len(roster)} roster entries for {name}")
-                rosters_by_team[tid] = roster
+                # Only surnames are needed (for the snack pickers), and
+                # rosters.json is published, so keep nothing else about
+                # the players.
+                rosters_by_team[tid] = [
+                    {"name": surname} for surname in roster_family_names(roster)]
             else:
                 print(f"  No roster found on page for {name}")
-                # Save HTML for debugging roster parsing
-                debug_path = f"debug_roster_{tid}.html"
-                with open(debug_path, "w") as df:
-                    df.write(html)
-                print(f"  Saved page HTML to {debug_path} for debugging")
+                if DEBUG:
+                    debug_path = f"debug_roster_{tid}.html"
+                    with open(debug_path, "w", encoding="utf-8") as df:
+                        df.write(html)
+                    print(f"  Saved page HTML to {debug_path} for debugging")
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
             failed_teams.add(tid)
@@ -2954,7 +2997,8 @@ def main():
         # notifications so we don't blast every game as "New".
         print("\nNo previous snapshot — seeding. Skipping notifications.")
     else:
-        changes, reschedules = detect_changes(old_snapshot, new_snapshot)
+        changes, reschedules = detect_changes(
+            old_snapshot, new_snapshot, today=local_now(config).date())
         if changes:
             print("\nSchedule changes detected:")
             for team_name, change_list in changes.items():
@@ -2988,7 +3032,10 @@ def main():
             if base_url:
                 resp = requests.get(f"{base_url}/calendars/rosters.json", timeout=10)
                 if resp.status_code == 200:
-                    rosters_by_team = migrate_legacy_team_keys(resp.json(), config)
+                    rosters_by_team = {
+                        key: [{"name": n} for n in roster_family_names(roster)]
+                        for key, roster in migrate_legacy_team_keys(
+                            resp.json(), config).items()}
                     save_rosters(rosters_by_team)
                     print(f"  Loaded {len(rosters_by_team)} team rosters from Pages")
         except Exception as e:
