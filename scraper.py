@@ -7,6 +7,7 @@ with lunch/snack signup and swap management.
 Deployed via GitHub Actions to GitHub Pages.
 """
 
+import base64
 import hashlib
 import json
 import math
@@ -330,7 +331,7 @@ def extract_address_from_maps_link(href):
     return None
 
 
-def parse_schedule(html, team_name, team_url):
+def parse_schedule(html, team_name, team_url, season_year=None):
     """
     Parse the TEAM SCHEDULE section of a Perfect Game team page.
 
@@ -449,7 +450,8 @@ def parse_schedule(html, team_name, team_url):
         game_link = row.find("a", href=re.compile(r"DiamondKast/Game\.aspx\?gameid=", re.I))
 
         game = parse_game_row(cells, cell_texts, full_text, game_link,
-                              current_event, current_event_url, team_name, team_url)
+                              current_event, current_event_url, team_name, team_url,
+                              season_year=season_year)
         if game:
             games.append(game)
             debug_log(f"  -> Parsed game: {game['title']} on {game['date']} [{current_event}]")
@@ -459,7 +461,8 @@ def parse_schedule(html, team_name, team_url):
 
 
 def parse_game_row(cells, cell_texts, full_text, game_link,
-                   event_name, event_url, team_name, team_url):
+                   event_name, event_url, team_name, team_url,
+                   season_year=None):
     """
     Parse a single game row from the RadGrid schedule table.
 
@@ -497,9 +500,15 @@ def parse_game_row(cells, cell_texts, full_text, game_link,
         day_str = date_match.group(2)
         now = datetime.now()
         try:
-            game_date = datetime.strptime(f"{month_str} {day_str} {now.year}", "%b %d %Y")
-            if game_date.month < now.month - 6:
-                game_date = datetime.strptime(f"{month_str} {day_str} {now.year + 1}", "%b %d %Y")
+            if season_year:
+                # The page shows no year; the team's configured season is
+                # authoritative. Guessing from today's date would move last
+                # season's spring games into next year once autumn arrives.
+                game_date = datetime.strptime(f"{month_str} {day_str} {season_year}", "%b %d %Y")
+            else:
+                game_date = datetime.strptime(f"{month_str} {day_str} {now.year}", "%b %d %Y")
+                if game_date.month < now.month - 6:
+                    game_date = datetime.strptime(f"{month_str} {day_str} {now.year + 1}", "%b %d %Y")
         except ValueError:
             return None
 
@@ -1569,12 +1578,17 @@ def migrate_snack_assignments(config, reschedules):
 
 def send_ntfy(topic, title, message):
     """Send a push notification via ntfy.sh."""
+    # HTTP headers are latin-1 only; ntfy accepts RFC 2047 for anything else.
+    header_title = title
+    if not title.isascii():
+        encoded = base64.b64encode(title.encode("utf-8")).decode("ascii")
+        header_title = f"=?UTF-8?B?{encoded}?="
     try:
         resp = requests.post(
             f"{NTFY_URL}/{topic}",
             data=message.encode("utf-8"),
             headers={
-                "Title": title,
+                "Title": header_title,
                 "Priority": "default",
                 "Tags": "baseball",
             },
@@ -1584,7 +1598,7 @@ def send_ntfy(topic, title, message):
             print(f"  ntfy sent to {topic}: {title}")
         else:
             print(f"  ntfy error ({resp.status_code}): {resp.text[:200]}")
-    except requests.RequestException as e:
+    except Exception as e:  # a failed push must never fail the run
         print(f"  ntfy send failed for {topic}: {e}")
 
 
@@ -2717,7 +2731,7 @@ def main():
 
         try:
             html = fetch_team_schedule_html(url)
-            games = parse_schedule(html, name, url)
+            games = parse_schedule(html, name, url, season_year=team.get("year"))
             for g in games:
                 g["team_id"] = tid
             all_games.extend(games)
