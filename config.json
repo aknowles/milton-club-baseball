@@ -7,66 +7,191 @@
   "travel_threshold_miles": 40,
   "teams": [
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270150&team=1019769&Year=2026",
+      "id": "mdb-knights-11u-gold",
       "team_name": "MDB Knights 11U Gold",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270150&team=1019769&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-11u-gold",
       "snack_signup": true
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270162&team=1019779&Year=2026",
+      "id": "mdb-knights-14u-blue",
       "team_name": "MDB Knights 14U Blue",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270162&team=1019779&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-14u-blue",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270151&team=1019770&Year=2026",
+      "id": "mdb-knights-11u-blue",
       "team_name": "MDB Knights 11U Blue",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270151&team=1019770&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-11u-blue",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270157&Year=2026",
+      "id": "mdb-knights-13u-gold",
       "team_name": "MDB Knights 13U Gold",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270157&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-13u-gold",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270158&Year=2026",
+      "id": "mdb-knights-13u-blue",
       "team_name": "MDB Knights 13U Blue",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270158&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-13u-blue",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270149&Year=2026",
+      "id": "mdb-knights-10u-gold",
       "team_name": "MDB Knights 10U Gold",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270149&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-10u-gold",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=76990&orgteamid=272240&team=1050136&Year=2026",
+      "id": "braintree-bandits-11u-mercado",
       "team_name": "Braintree Bandits 11U Mercado",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=76990&orgteamid=272240&team=1050136&Year=2026",
       "year": 2026,
       "ntfy_topic": "braintree-bandits-11u-mercado",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270154&Year=2026",
+      "id": "mdb-knights-12u-gold",
       "team_name": "MDB Knights 12U Gold",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270154&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-12u-gold",
       "snack_signup": false
     },
     {
-      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270155&Year=2026",
+      "id": "mdb-knights-12u-blue",
       "team_name": "MDB Knights 12U Blue",
+      "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=26795&orgteamid=270155&Year=2026",
       "year": 2026,
       "ntfy_topic": "mdb-knights-12u-blue",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-9u-sweeney-2027",
+      "team_name": "MDB Knights 9U",
+      "coach": "Sweeney",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-9u-sweeney-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-10u-gold-2027",
+      "team_name": "MDB Knights 10U Gold",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-10u-gold-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-11u-wagner-2027",
+      "team_name": "MDB Knights 11U",
+      "coach": "Wagner",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-wagner-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-11u-golbranson-2027",
+      "team_name": "MDB Knights 11U",
+      "coach": "Golbranson",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-golbranson-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-11u-blue-2027",
+      "team_name": "MDB Knights 11U Blue",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-blue-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-12u-gold-2027",
+      "team_name": "MDB Knights 12U Gold",
+      "coach": "Maguire",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-12u-gold-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-12u-blue-2027",
+      "team_name": "MDB Knights 12U Blue",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-12u-blue-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-13u-schnabel-2027",
+      "team_name": "MDB Knights 13U",
+      "coach": "Schnabel",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-13u-schnabel-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-13u-fitzgibbons-2027",
+      "team_name": "MDB Knights 13U",
+      "coach": "Fitzgibbons",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-13u-fitzgibbons-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-14u-earle-2027",
+      "team_name": "MDB Knights 14U",
+      "coach": "Earle",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-earle-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-14u-butts-2027",
+      "team_name": "MDB Knights 14U",
+      "coach": "Butts",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-butts-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-14u-duffy-fitzgerald-2027",
+      "team_name": "MDB Knights 14U",
+      "coach": "Duffy/Fitzgerald",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-duffy-fitzgerald-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-15u-duffy-morrissey-2027",
+      "team_name": "MDB Knights 15U",
+      "coach": "Duffy/Morrissey",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-15u-duffy-morrissey-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-15u-golbranson-2027",
+      "team_name": "MDB Knights 15U",
+      "coach": "Golbranson",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-15u-golbranson-2027",
+      "snack_signup": false
+    },
+    {
+      "id": "mdb-knights-16-17u-2027",
+      "team_name": "MDB Knights 16/17U",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-16-17u-2027",
       "snack_signup": false
     }
   ],
@@ -74,7 +199,7 @@
   "base_url": "https://aknowles.github.io/milton-club-baseball",
   "timezone": "US/Eastern",
   "practices": {
-    "MDB Knights 11U Gold": {
+    "mdb-knights-11u-gold": {
       "adhoc": [
         {
           "date": "2026-03-26",
@@ -87,50 +212,119 @@
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 14U Blue": {
+    "mdb-knights-14u-blue": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 11U Blue": {
+    "mdb-knights-11u-blue": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 13U Gold": {
+    "mdb-knights-13u-gold": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 13U Blue": {
+    "mdb-knights-13u-blue": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 10U Gold": {
+    "mdb-knights-10u-gold": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "Braintree Bandits 11U Mercado": {
+    "braintree-bandits-11u-mercado": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 12U Gold": {
+    "mdb-knights-12u-gold": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     },
-    "MDB Knights 12U Blue": {
+    "mdb-knights-12u-blue": {
       "adhoc": [],
       "modifications": [],
       "blackout_dates": []
     }
   },
+  "practice_sheets": [
+    {
+      "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vR00otBhCYQTMg1GhhAJBLOzc_c7xP_d75Zsdqwfn6vxUv3V3yCojL2GQYHoQ2Ewg/pubhtml",
+      "title": "Winter Workout",
+      "duration_minutes": 60,
+      "location": "Matt Duffy Baseball Academy, 293 Libbey Pkwy unit 150, Weymouth, ma",
+      "teams": {
+        "mdb-knights-9u-sweeney-2027": [
+          "9U - Sweeney",
+          "9U/10U"
+        ],
+        "mdb-knights-10u-gold-2027": [
+          "10U Gold",
+          "9U/10U"
+        ],
+        "mdb-knights-11u-wagner-2027": [
+          "11U Wagner",
+          "11U"
+        ],
+        "mdb-knights-11u-golbranson-2027": [
+          "11U Golbranson",
+          "11U"
+        ],
+        "mdb-knights-11u-blue-2027": [
+          "11U Blue",
+          "11U"
+        ],
+        "mdb-knights-12u-gold-2027": [
+          "12U Maguire",
+          "12U"
+        ],
+        "mdb-knights-12u-blue-2027": [
+          "12U Blue",
+          "12U"
+        ],
+        "mdb-knights-13u-schnabel-2027": [
+          "13U Schnabel",
+          "13U"
+        ],
+        "mdb-knights-13u-fitzgibbons-2027": [
+          "13U - Fitzgibbons",
+          "13U"
+        ],
+        "mdb-knights-14u-earle-2027": [
+          "14U Earle",
+          "14U"
+        ],
+        "mdb-knights-14u-butts-2027": [
+          "14U Butts",
+          "14U"
+        ],
+        "mdb-knights-14u-duffy-fitzgerald-2027": [
+          "14U Duffy/Fitzgerald",
+          "14U"
+        ],
+        "mdb-knights-15u-duffy-morrissey-2027": [
+          "15U Duffy/Morrissey",
+          "15U"
+        ],
+        "mdb-knights-15u-golbranson-2027": [
+          "15U Golbranson",
+          "15U"
+        ],
+        "mdb-knights-16-17u-2027": [
+          "16/17U"
+        ]
+      }
+    }
+  ],
   "notices": [],
   "game_overrides": {
-    "MDB Knights 11U Gold": [
+    "mdb-knights-11u-gold": [
       {
         "date": "2026-03-28",
         "status": "postponed"
@@ -144,7 +338,7 @@
   },
   "game_results": {},
   "snacks": {
-    "MDB Knights 11U Gold": [
+    "mdb-knights-11u-gold": [
       {
         "date": "2026-03-28",
         "families": [
@@ -227,13 +421,13 @@
         ]
       }
     ],
-    "MDB Knights 14U Blue": [],
-    "MDB Knights 11U Blue": [],
-    "MDB Knights 13U Gold": [],
-    "MDB Knights 13U Blue": [],
-    "MDB Knights 10U Gold": [],
-    "Braintree Bandits 11U Mercado": [],
-    "MDB Knights 12U Gold": [],
-    "MDB Knights 12U Blue": []
+    "mdb-knights-14u-blue": [],
+    "mdb-knights-11u-blue": [],
+    "mdb-knights-13u-gold": [],
+    "mdb-knights-13u-blue": [],
+    "mdb-knights-10u-gold": [],
+    "braintree-bandits-11u-mercado": [],
+    "mdb-knights-12u-gold": [],
+    "mdb-knights-12u-blue": []
   }
 }
