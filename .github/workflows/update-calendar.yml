@@ -19,14 +19,13 @@ on:
     branches: [main]
     paths:
       - 'scraper.py'
+      - 'teams.py'
+      - 'ntfy.py'
+      - 'requirements.txt'
       - 'config.json'
       - '.github/workflows/update-calendar.yml'
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-  actions: write  # keepalive step re-enables this workflow
+permissions: {}
 
 concurrency:
   group: "pages"
@@ -35,17 +34,22 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write  # keepalive step re-enables this workflow
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
+          cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt pytz
+        run: pip install -r requirements.txt
 
       - name: Fetch previous snapshot from Pages
         run: |
@@ -62,6 +66,10 @@ jobs:
           if [ "$SNAP_SIZE" -lt 10 ]; then
             echo "WARNING: Snapshot is suspiciously small (${SNAP_SIZE} bytes)"
           fi
+          # Reuse earlier address lookups so each run only geocodes new venues
+          curl -sf -o calendars/geocode_cache.json \
+            "https://aknowles.github.io/milton-club-baseball/calendars/geocode_cache.json" \
+            || rm -f calendars/geocode_cache.json
 
       - name: Run scraper
         run: python scraper.py
@@ -74,23 +82,35 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update-calendar.yml/enable"
+          REPO: ${{ github.repository }}
+        run: gh api -X PUT "repos/${REPO}/actions/workflows/update-calendar.yml/enable"
+
+      # Publish only the generated site, not the repository's source files
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp index.html .nojekyll _site/
+          cp -r calendars _site/calendars
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: .
+          path: _site
 
   deploy:
     needs: scrape
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
   notify-failure:
     needs: [scrape, deploy]
@@ -100,7 +120,7 @@ jobs:
       issues: write
     steps:
       - name: Create failure issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const existing = await github.rest.issues.listForRepo({

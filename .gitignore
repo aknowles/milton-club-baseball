@@ -12,3 +12,7 @@ calendars/*.ics
 calendars/snapshot.json
 calendars/rosters.json
 index.html
+_site/
+.pytest_cache/
+.ruff_cache/
+calendars/*.json

@@ -82,8 +82,10 @@ Use the issue templates to request practice changes without editing `config.json
 1. Go to **Issues → New Issue**
 2. Choose a template: **Add Practice**, **Cancel Practice**, or **Modify Practice**
 3. Fill in the form and submit
-4. A repo admin adds the `approved` label
-5. The workflow automatically updates `config.json` and closes the issue
+4. A repo admin comments `/approve` on the issue
+5. The workflow validates the request, updates `config.json` and closes the issue
+
+Only the repo owner and collaborators can approve; `/approve` from anyone else is ignored. Dates, times and names are validated before anything is written, and a request that can't be applied gets a comment explaining where to look.
 
 ### Practice Config Example
 
@@ -195,23 +197,35 @@ Issue forms show teams as `Name – Coach X (year)`; the processors resolve that
 ## Local Development
 
 ```bash
-pip install -r requirements.txt pytz
-python scraper.py
+pip install -r requirements-dev.txt
+python scraper.py   # scrape and build index.html + calendars/
+pytest              # run the tests
+ruff check .        # lint
 ```
+
+Dependencies are pinned to exact versions; Dependabot opens a weekly PR for new releases of the Python packages and the GitHub Actions (which are pinned to commit SHAs). CI runs the linter, the tests and `pip-audit` on every pull request.
 
 ## File Structure
 
 ```
 .github/workflows/update-calendar.yml       # Main scraper + deploy workflow
-.github/workflows/process-practice-changes.yml  # Practice issue processing
+.github/workflows/process-*.yml             # Apply approved issues to config.json
+.github/workflows/ci.yml                    # Lint, tests and dependency audit
+.github/dependabot.yml                      # Weekly dependency update PRs
 .github/ISSUE_TEMPLATE/                      # Issue templates for practice changes
 scraper.py                                   # Schedule scraper + calendar generator
-process_practice_issue.py                    # Issue body parser for practice changes
+process_practice_issue.py                    # Applies practice add/cancel/modify issues
+process_game_status_issue.py                 # Applies postponed/cancelled issues
+process_snacks_issue.py                      # Applies snack signup and swap issues
+issue_utils.py                               # Issue-form parsing and input validation
+ntfy.py                                      # ntfy.sh push notifications
 teams.py                                     # Team id / label helpers shared by all scripts
 sync_issue_templates.py                      # Regenerates issue-form Team dropdowns from config
 config.json                                  # Team, practice, notice, and snacks configuration
 calendars/                                   # Generated per-team .ics files
 calendars/snapshot.json                      # Change detection snapshot (auto-managed)
 index.html                                   # Generated GitHub Pages site
-requirements.txt                             # Python dependencies
+requirements.txt                             # Python dependencies (pinned)
+requirements-dev.txt                         # Test and lint tools
+tests/                                       # pytest suite
 ```
