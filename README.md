@@ -52,6 +52,33 @@ Practices are managed via the `practices` block in `config.json`. Each team supp
 - **`modifications`**: Cancel or reschedule a specific practice date
 - **`blackout_dates`**: Dates where no practices occur
 
+### Importing Practices from a Google Sheet
+
+`practice_sheets` in `config.json` pulls a weekly practice grid from a Google Sheet published with **File → Share → Publish to web** (the `pubhtml` link). The sheet is re-read on every run, so edits to it flow into the calendars automatically.
+
+```json
+"practice_sheets": [
+  {
+    "url": "https://docs.google.com/spreadsheets/d/e/<id>/pubhtml",
+    "title": "Winter Workout",
+    "duration_minutes": 60,
+    "location": "Matt Duffy Baseball Academy, ...",
+    "teams": {
+      "MDB Knights 12U Blue 2027": ["12U Blue", "12U"]
+    }
+  }
+]
+```
+
+- The sheet is a repeating block per week: a `Week N (November 30 – December 6, 2026)` banner, a header row of `Time | Monday | … | Weekend Time | Saturday | Sunday`, then one row per time slot.
+- `teams` maps each team to the cell labels that mean "this team practises" — its own label plus any shared age-group label. Labels not mapped to any team are listed in the run log.
+- `modifications` and `blackout_dates` in the `practices` block apply to sheet practices too, so the Cancel/Modify Practice issue templates work on them.
+- If the sheet can't be read, the last successfully parsed copy (published as `calendars/practice_sheet_cache.json`) is reused.
+
+### Seasons
+
+Each season's teams are separate entries in `teams` with the season in the name (e.g. `MDB Knights 12U Blue 2027`), so they get their own calendar file and ntfy topic and never write onto last year's feed. A team with no `url` is practices-only until Perfect Game lists it — add the `url` then. New teams also need adding to the dropdowns in `.github/ISSUE_TEMPLATE/`.
+
 ### Adding/Modifying Practices via GitHub Issues
 
 Use the issue templates to request practice changes without editing `config.json` directly:

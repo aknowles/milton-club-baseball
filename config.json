@@ -68,6 +68,96 @@
       "year": 2026,
       "ntfy_topic": "mdb-knights-12u-blue",
       "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 9U Sweeney 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-9u-sweeney-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 10U Gold 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-10u-gold-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 11U Wagner 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-wagner-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 11U Golbranson 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-golbranson-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 11U Blue 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-11u-blue-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 12U Maguire 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-12u-maguire-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 12U Blue 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-12u-blue-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 13U Schnabel 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-13u-schnabel-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 13U Fitzgibbons 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-13u-fitzgibbons-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 14U Earle 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-earle-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 14U Butts 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-butts-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 14U Duffy/Fitzgerald 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-14u-duffy-fitzgerald-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 15U Duffy/Morrissey 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-15u-duffy-morrissey-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 15U Golbranson 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-15u-golbranson-2027",
+      "snack_signup": false
+    },
+    {
+      "team_name": "MDB Knights 16/17U 2027",
+      "year": 2027,
+      "ntfy_topic": "mdb-knights-16-17u-2027",
+      "snack_signup": false
     }
   ],
   "notify_level": "important",
@@ -128,6 +218,75 @@
       "blackout_dates": []
     }
   },
+  "practice_sheets": [
+    {
+      "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vR00otBhCYQTMg1GhhAJBLOzc_c7xP_d75Zsdqwfn6vxUv3V3yCojL2GQYHoQ2Ewg/pubhtml",
+      "title": "Winter Workout",
+      "duration_minutes": 60,
+      "location": "Matt Duffy Baseball Academy, 293 Libbey Pkwy unit 150, Weymouth, ma",
+      "teams": {
+        "MDB Knights 9U Sweeney 2027": [
+          "9U - Sweeney",
+          "9U/10U"
+        ],
+        "MDB Knights 10U Gold 2027": [
+          "10U Gold",
+          "9U/10U"
+        ],
+        "MDB Knights 11U Wagner 2027": [
+          "11U Wagner",
+          "11U"
+        ],
+        "MDB Knights 11U Golbranson 2027": [
+          "11U Golbranson",
+          "11U"
+        ],
+        "MDB Knights 11U Blue 2027": [
+          "11U Blue",
+          "11U"
+        ],
+        "MDB Knights 12U Maguire 2027": [
+          "12U Maguire",
+          "12U"
+        ],
+        "MDB Knights 12U Blue 2027": [
+          "12U Blue",
+          "12U"
+        ],
+        "MDB Knights 13U Schnabel 2027": [
+          "13U Schnabel",
+          "13U"
+        ],
+        "MDB Knights 13U Fitzgibbons 2027": [
+          "13U - Fitzgibbons",
+          "13U"
+        ],
+        "MDB Knights 14U Earle 2027": [
+          "14U Earle",
+          "14U"
+        ],
+        "MDB Knights 14U Butts 2027": [
+          "14U Butts",
+          "14U"
+        ],
+        "MDB Knights 14U Duffy/Fitzgerald 2027": [
+          "14U Duffy/Fitzgerald",
+          "14U"
+        ],
+        "MDB Knights 15U Duffy/Morrissey 2027": [
+          "15U Duffy/Morrissey",
+          "15U"
+        ],
+        "MDB Knights 15U Golbranson 2027": [
+          "15U Golbranson",
+          "15U"
+        ],
+        "MDB Knights 16/17U 2027": [
+          "16/17U"
+        ]
+      }
+    }
+  ],
   "notices": [],
   "game_overrides": {
     "MDB Knights 11U Gold": [

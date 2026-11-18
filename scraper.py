@@ -802,26 +802,233 @@ def extract_opponent(cells, cell_texts, full_text, home_away_indicator):
 # Practices
 # ---------------------------------------------------------------------------
 
-def build_practice_events(config):
+WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday",
+            "saturday", "sunday"]
+PRACTICE_SHEET_CACHE_PATH = "calendars/practice_sheet_cache.json"
+
+
+def _normalize_sheet_label(text):
+    """Normalise a sheet cell so '13U - Fitzgibbons' matches '13u fitzgibbons'."""
+    return re.sub(r"[\s\-–—]+", " ", text or "").strip().lower()
+
+
+def parse_practice_sheet(html):
+    """Parse a published Google Sheet weekly practice grid.
+
+    Expected layout, repeated once per week:
+
+        Week 1 (November 30 – December 6, 2026)
+        Time    | Monday | ... | Friday | Weekend Time | Saturday | Sunday
+        5:00 PM | 9U     | ... |        | 9:00 AM      |          | 14U
+
+    A "time" column applies to the day columns to its right, up to the next
+    time column. Returns a list of {"date", "time", "label"} dicts, one per
+    non-empty cell.
     """
-    Build practice events from the practices block in config.json.
+    soup = BeautifulSoup(html, "html.parser")
+    sessions = []
+    week_start = None
+    columns = None  # list of ("time", None) / ("day", weekday_idx) / None
+
+    range_re = re.compile(
+        r"\(\s*([A-Za-z]+)\s+(\d{1,2})(?:,\s*(\d{4}))?\s*[–—-]\s*"
+        r"(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})\s*\)"
+    )
+
+    for tr in soup.find_all("tr"):
+        cells = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
+        if not any(cells):
+            continue
+        non_empty = [c for c in cells if c]
+
+        # Week banner: a single merged cell carrying the date range
+        m = range_re.search(non_empty[0]) if len(non_empty) == 1 else None
+        if m:
+            columns = None
+            week_start = None
+            if not non_empty[0].lower().startswith("week"):
+                continue  # e.g. "Holiday Break (...)"
+            start_month, start_day, start_year, _, _, end_year = m.groups()
+            try:
+                end_year = int(end_year)
+                month_num = datetime.strptime(start_month[:3], "%b").month
+                if start_year:
+                    year = int(start_year)
+                else:
+                    end_month = m.group(4) or start_month
+                    end_month_num = datetime.strptime(end_month[:3], "%b").month
+                    # "December 28 – January 3, 2027" starts the year before
+                    year = end_year - 1 if month_num > end_month_num else end_year
+                week_start = date(year, month_num, int(start_day))
+            except ValueError:
+                print(f"  WARNING: Could not parse week range '{non_empty[0]}'")
+            continue
+
+        # Column header row
+        lowered = [c.lower() for c in cells]
+        if any(c in WEEKDAYS for c in lowered):
+            columns = []
+            for c in lowered:
+                if c in WEEKDAYS:
+                    columns.append(("day", WEEKDAYS.index(c)))
+                elif "time" in c:
+                    columns.append(("time", None))
+                else:
+                    columns.append(None)
+            continue
+
+        if week_start is None or columns is None:
+            continue
+
+        current_time = None
+        for col, text in zip(columns, cells):
+            if col is None:
+                continue
+            kind, weekday = col
+            if kind == "time":
+                current_time = None
+                if text:
+                    try:
+                        current_time = datetime.strptime(
+                            text.upper().replace(".", ""), "%I:%M %p"
+                        ).strftime("%I:%M %p").lstrip("0")
+                    except ValueError:
+                        pass
+                continue
+            if not text or current_time is None:
+                continue
+            offset = (weekday - week_start.weekday()) % 7
+            sessions.append({
+                "date": (week_start + timedelta(days=offset)).strftime("%Y-%m-%d"),
+                "time": current_time,
+                "label": text,
+            })
+
+    return sessions
+
+
+def fetch_practice_sheet_sessions(url):
+    """Fetch a published Google Sheet ("Publish to web" pubhtml link) and
+    return every session on it, across all tabs."""
+    html = fetch_page(url)
+    sessions = parse_practice_sheet(html)
+    if sessions:
+        return sessions
+    # The pubhtml landing page is only a shell; each tab's grid lives at
+    # .../pubhtml/sheet?headers=false&gid=<gid>
+    gids = list(OrderedDict.fromkeys(re.findall(r'gid: "(\d+)"', html)))
+    base = url.split("?")[0].rstrip("/")
+    for gid in gids:
+        tab_html = fetch_page(f"{base}/sheet?headers=false&gid={gid}")
+        sessions.extend(parse_practice_sheet(tab_html))
+    return sessions
+
+
+def load_practice_sheet_entries(config):
+    """Turn the config's ``practice_sheets`` into per-team practice entries.
+
+    Each sheet maps team names to the cell labels that mean "this team
+    practises" (e.g. ``"MDB Knights 12U Blue": ["12U Blue", "12U"]``).
+    Returns {team_name: [adhoc-style entry, ...]}.
+
+    If a sheet can't be fetched or parses to nothing, the sessions from the
+    last successful run (published to Pages) are reused so a Google hiccup
+    doesn't wipe practices off every calendar and fire "removed" pushes.
+    """
+    sheets = config.get("practice_sheets", [])
+    if not sheets:
+        return {}
+
+    cache = {}
+    previous_cache = None
+    entries = {}
+
+    for sheet in sheets:
+        url = sheet.get("url")
+        if not url:
+            continue
+        sessions = []
+        try:
+            sessions = fetch_practice_sheet_sessions(url)
+        except requests.RequestException as e:
+            print(f"  ERROR fetching practice sheet: {e}")
+        if sessions:
+            print(f"Practice sheet: parsed {len(sessions)} sessions")
+        else:
+            if previous_cache is None:
+                previous_cache = {}
+                base_url = config.get("base_url", "")
+                try:
+                    if base_url:
+                        resp = requests.get(
+                            f"{base_url}/{PRACTICE_SHEET_CACHE_PATH}", timeout=10)
+                        if resp.status_code == 200:
+                            previous_cache = resp.json()
+                except Exception as e:
+                    print(f"  Could not fetch previous practice sheet cache: {e}")
+            sessions = previous_cache.get(url, [])
+            print(f"  WARNING: Practice sheet returned no sessions; "
+                  f"reusing {len(sessions)} from the last successful run")
+        cache[url] = sessions
+
+        label_to_teams = {}
+        for team_name, labels in sheet.get("teams", {}).items():
+            for label in labels:
+                label_to_teams.setdefault(
+                    _normalize_sheet_label(label), []).append(team_name)
+
+        title_prefix = sheet.get("title", "Practice")
+        unmatched = set()
+        for s in sessions:
+            teams = label_to_teams.get(_normalize_sheet_label(s["label"]))
+            if not teams:
+                unmatched.add(s["label"])
+                continue
+            for team_name in teams:
+                entry = {
+                    "date": s["date"],
+                    "time": s["time"],
+                    "duration_minutes": sheet.get("duration_minutes", 60),
+                    "title": f"{title_prefix}: {s['label']}",
+                }
+                if sheet.get("location"):
+                    entry["location"] = sheet["location"]
+                entries.setdefault(team_name, []).append(entry)
+        if unmatched:
+            print(f"  Practice sheet labels not mapped to a team: "
+                  f"{', '.join(sorted(unmatched))}")
+
+    os.makedirs("calendars", exist_ok=True)
+    with open(PRACTICE_SHEET_CACHE_PATH, "w") as f:
+        json.dump(cache, f, indent=2)
+
+    return entries
+
+
+def build_practice_events(config, sheet_entries=None):
+    """
+    Build practice events from the practices block in config.json, plus any
+    entries imported from ``practice_sheets`` (see load_practice_sheet_entries).
 
     Each team can have:
       - adhoc: list of {date, time, duration_minutes, location, title}
       - modifications: list of {date, action, ...} where action is "cancel" or
         "reschedule" with new_date/new_time
       - blackout_dates: list of date strings where no practices occur
+
+    Modifications and blackout dates apply to sheet-imported practices too.
     """
-    from pytz import timezone as pytz_timezone
-    tz = pytz_timezone(config.get("timezone", TIMEZONE))
     practices_cfg = config.get("practices", {})
+    sheet_entries = sheet_entries or {}
     events = []
 
-    for team_name, pdata in practices_cfg.items():
+    for team_name in list(practices_cfg) + [t for t in sheet_entries
+                                            if t not in practices_cfg]:
+        pdata = practices_cfg.get(team_name, {})
         blackout = set(pdata.get("blackout_dates", []))
         mods = {m["date"]: m for m in pdata.get("modifications", [])}
 
-        for entry in pdata.get("adhoc", []):
+        for entry in pdata.get("adhoc", []) + sheet_entries.get(team_name, []):
             d = entry["date"]
             if d in blackout:
                 continue
@@ -1538,7 +1745,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
     # Build team sections
     team_sections = ""
-    for team_name, games in sorted(teams.items()):
+    # Newest season first, then alphabetical
+    for team_name, games in sorted(
+            teams.items(),
+            key=lambda kv: (-team_configs.get(kv[0], {}).get("year", 0), kv[0])):
         upcoming = [g for g in games if g["date"].date() >= date.today()]
         upcoming.sort(key=lambda g: g["date"])
 
@@ -1596,7 +1806,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 g = first
                 time_str = g["time"].strftime("%I:%M %p").lstrip("0") if g.get("time") else "TBD"
                 loc_str = g.get("field_name") or g.get("location") or ""
-                opponent = g.get("opponent", "TBD")
+                opponent = g["title"] if g.get("is_practice") else g.get("opponent", "TBD")
                 dh_label = ""
 
             # Show snack tag once per day
@@ -2472,7 +2682,14 @@ def main():
     # survives the next deploy.
     failed_teams = set()
 
-    for i, team in enumerate(teams):
+    # Teams without a Perfect Game URL (e.g. a new season's teams before PG
+    # lists them) still get a calendar from practices alone.
+    pg_teams = [t for t in teams if t.get("url")]
+    for t in teams:
+        if not t.get("url"):
+            print(f"No Perfect Game URL for {t['team_name']} yet — practices only")
+
+    for i, team in enumerate(pg_teams):
         url = team["url"]
         name = team["team_name"]
         print(f"Fetching schedule for {name}...")
@@ -2500,12 +2717,13 @@ def main():
             continue
 
         # Polite delay between requests
-        if i < len(teams) - 1:
+        if i < len(pg_teams) - 1:
             print(f"  Waiting {REQUEST_DELAY}s before next request...")
             time.sleep(REQUEST_DELAY)
 
     # Add practice events from config
-    practice_events = build_practice_events(config)
+    practice_events = build_practice_events(
+        config, load_practice_sheet_entries(config))
     if practice_events:
         print(f"Added {len(practice_events)} practice events from config")
         all_games.extend(practice_events)
