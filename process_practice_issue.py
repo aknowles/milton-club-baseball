@@ -12,6 +12,8 @@ import os
 import re
 import sys
 
+from teams import resolve_team_id
+
 
 def parse_issue_body(body):
     """Parse GitHub issue form body into field dict.
@@ -66,12 +68,16 @@ def main():
     fields = parse_issue_body(issue_body)
     print(f"Parsed fields: {json.dumps(fields, indent=2)}")
 
-    team = fields.get("team", "")
-    if not team:
+    raw_team = fields.get("team", "")
+    if not raw_team:
         print("ERROR: No team specified")
         sys.exit(1)
 
     config = load_config()
+    team = resolve_team_id(config, raw_team)
+    if not team:
+        print(f"ERROR: Unknown team '{raw_team}'")
+        sys.exit(1)
     practices = config.setdefault("practices", {})
     team_practices = practices.setdefault(team, {
         "adhoc": [],

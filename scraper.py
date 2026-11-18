@@ -22,6 +22,8 @@ import requests
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event, vText
 
+from teams import slugify, team_id, team_label
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -927,9 +929,9 @@ def fetch_practice_sheet_sessions(url):
 def load_practice_sheet_entries(config):
     """Turn the config's ``practice_sheets`` into per-team practice entries.
 
-    Each sheet maps team names to the cell labels that mean "this team
-    practises" (e.g. ``"MDB Knights 12U Blue": ["12U Blue", "12U"]``).
-    Returns {team_name: [adhoc-style entry, ...]}.
+    Each sheet maps team ids to the cell labels that mean "this team
+    practises" (e.g. ``"mdb-knights-12u-blue-2027": ["12U Blue", "12U"]``).
+    Returns {team_id: [adhoc-style entry, ...]}.
 
     If a sheet can't be fetched or parses to nothing, the sessions from the
     last successful run (published to Pages) are reused so a Google hiccup
@@ -1016,19 +1018,23 @@ def build_practice_events(config, sheet_entries=None):
         "reschedule" with new_date/new_time
       - blackout_dates: list of date strings where no practices occur
 
-    Modifications and blackout dates apply to sheet-imported practices too.
+    The practices block is keyed by team id (see teams.py). Modifications and blackout dates apply to sheet-imported practices too.
     """
     practices_cfg = config.get("practices", {})
     sheet_entries = sheet_entries or {}
+    team_names = {team_id(t): t["team_name"] for t in config.get("teams", [])}
     events = []
 
-    for team_name in list(practices_cfg) + [t for t in sheet_entries
-                                            if t not in practices_cfg]:
-        pdata = practices_cfg.get(team_name, {})
+    for tid in list(practices_cfg) + [t for t in sheet_entries
+                                      if t not in practices_cfg]:
+        if tid not in team_names:
+            print(f"  WARNING: practices configured for unknown team id '{tid}'")
+        team_name = team_names.get(tid, tid)
+        pdata = practices_cfg.get(tid, {})
         blackout = set(pdata.get("blackout_dates", []))
         mods = {m["date"]: m for m in pdata.get("modifications", [])}
 
-        for entry in pdata.get("adhoc", []) + sheet_entries.get(team_name, []):
+        for entry in pdata.get("adhoc", []) + sheet_entries.get(tid, []):
             d = entry["date"]
             if d in blackout:
                 continue
@@ -1078,6 +1084,7 @@ def build_practice_events(config, sheet_entries=None):
                 "address": None,
                 "event_name": "Practice",
                 "event_url": None,
+                "team_id": tid,
                 "team_name": team_name,
                 "team_url": None,
                 "game_url": None,
@@ -1092,10 +1099,10 @@ def build_practice_events(config, sheet_entries=None):
 # Notices
 # ---------------------------------------------------------------------------
 
-def get_game_result(config, team_name, event_date):
+def get_game_result(config, tid, event_date):
     """Return game result ('W', 'L', 'T', or None) for a given team and date."""
     results_cfg = config.get("game_results", {})
-    team_results = results_cfg.get(team_name, [])
+    team_results = results_cfg.get(tid, [])
     if isinstance(event_date, datetime):
         check_date = event_date.strftime("%Y-%m-%d")
     elif isinstance(event_date, date):
@@ -1109,15 +1116,15 @@ def get_game_result(config, team_name, event_date):
     return None
 
 
-def get_game_override(config, team_name, event_date):
+def get_game_override(config, tid, event_date):
     """Return game override dict for a given team and date, or None.
 
-    Override entries live under config["game_overrides"][team_name] and look
+    Override entries live under config["game_overrides"][team_id] and look
     like: {"date": "YYYY-MM-DD", "status": "postponed"|"cancelled",
            "reason": "optional explanation"}
     """
     overrides_cfg = config.get("game_overrides", {})
-    team_overrides = overrides_cfg.get(team_name, [])
+    team_overrides = overrides_cfg.get(tid, [])
     if isinstance(event_date, datetime):
         check_date = event_date.strftime("%Y-%m-%d")
     elif isinstance(event_date, date):
@@ -1138,7 +1145,7 @@ def get_effective_status(game, config):
     admins can correct Perfect Game data when needed.
     """
     if config:
-        override = get_game_override(config, game["team_name"], game["date"])
+        override = get_game_override(config, game["team_id"], game["date"])
         if override:
             status = (override.get("status") or "").lower()
             if status in ("cancelled", "postponed"):
@@ -1175,7 +1182,7 @@ def get_event_emoji(game, config=None, is_past=False):
         # Check scraped score first, then fall back to config
         result = game.get("score_result")
         if not result and config:
-            result = get_game_result(config, game["team_name"], game["date"])
+            result = get_game_result(config, game["team_id"], game["date"])
         if result == "W":
             return "✅"
         elif result == "L":
@@ -1186,10 +1193,10 @@ def get_event_emoji(game, config=None, is_past=False):
     return "⚾"
 
 
-def get_snack_families(config, team_name, event_date):
+def get_snack_families(config, tid, event_date):
     """Return list of family names signed up for snacks on a given date."""
     snacks_cfg = config.get("snacks", {})
-    team_snacks = snacks_cfg.get(team_name, [])
+    team_snacks = snacks_cfg.get(tid, [])
     if isinstance(event_date, datetime):
         check_date = event_date.strftime("%Y-%m-%d")
     elif isinstance(event_date, date):
@@ -1302,8 +1309,21 @@ def save_snapshot(snapshot, path="calendars/snapshot.json"):
         json.dump(snapshot, f, indent=2, default=str)
 
 
+def migrate_legacy_team_keys(data, config):
+    """Re-key a dict that older runs keyed by team name so it is keyed by
+    team id. Before ids existed, a team's calendar slug was derived from its
+    name, and those slugs are now the ids of the same teams."""
+    ids = {team_id(t) for t in config.get("teams", [])}
+    migrated = {}
+    for key, value in data.items():
+        if key not in ids and slugify(key) in ids:
+            key = slugify(key)
+        migrated[key] = value
+    return migrated
+
+
 def build_snapshot(games_by_team, config=None):
-    """Build a dict snapshot of games keyed by team, then by uid.
+    """Build a dict snapshot of games keyed by team id, then by uid.
 
     UIDs are based on date + opponent only (not time), so that time changes
     are detected as modifications rather than remove + add pairs.  When
@@ -1583,17 +1603,15 @@ def notify_changes(changes, config):
         print("Notifications suppressed (notify_level=none)")
         return
 
-    team_topics = {}
-    for team in config.get("teams", []):
-        if team.get("ntfy_topic"):
-            team_topics[team["team_name"]] = team["ntfy_topic"]
+    teams_by_id = {team_id(t): t for t in config.get("teams", [])}
 
-    for team_name, change_list in changes.items():
-        topic = team_topics.get(team_name)
+    for tid, change_list in changes.items():
+        team = teams_by_id.get(tid, {})
+        topic = team.get("ntfy_topic")
         if not topic or not change_list:
             continue
         body = "\n".join(change_list)
-        send_ntfy(topic, f"Schedule Update: {team_name}", body)
+        send_ntfy(topic, f"Schedule Update: {team['team_name']}", body)
 
 
 # ---------------------------------------------------------------------------
@@ -1605,11 +1623,6 @@ def save_rosters(rosters_by_team, path="calendars/rosters.json"):
     with open(path, "w") as f:
         json.dump(rosters_by_team, f, indent=2)
     print(f"Wrote {path}")
-
-
-def team_slug(team_name):
-    """Convert a team name to a URL-safe filename slug."""
-    return re.sub(r"[^a-z0-9]+", "-", team_name.lower()).strip("-")
 
 
 def make_calendar(games, config, cal_name="Milton Club Baseball"):
@@ -1682,7 +1695,7 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
             desc_parts.append(f"\U0001F697 Travel: ~{round(travel_miles)} miles from {home_name}")
 
         # Append snack signup info
-        snack_families = get_snack_families(config, game["team_name"], game["date"])
+        snack_families = get_snack_families(config, game["team_id"], game["date"])
         if snack_families:
             desc_parts.append(f"Lunch/Snacks: {', '.join(snack_families)}")
 
@@ -1696,7 +1709,7 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
         # Unique ID
         date_str = game["date"].strftime("%Y%m%d")
         time_str = game["time"].strftime("%H%M") if game["time"] else "ALLDAY"
-        safe_team = re.sub(r"[^a-zA-Z0-9]", "", game["team_name"])
+        safe_team = re.sub(r"[^a-zA-Z0-9]", "", game["team_id"])
         safe_opp = re.sub(r"[^a-zA-Z0-9]", "", game.get("opponent") or "TBD")
         uid = f"{date_str}T{time_str}-{safe_team}-{safe_opp}@milton-club-baseball"
         event.add("uid", uid)
@@ -1735,25 +1748,28 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     # Group games by team
     teams = {}
     for game in all_games:
-        name = game["team_name"]
-        if name not in teams:
-            teams[name] = []
-        teams[name].append(game)
+        teams.setdefault(game["team_id"], []).append(game)
 
     # Build lookup for team config
-    team_configs = {t["team_name"]: t for t in config.get("teams", [])}
+    team_configs = {team_id(t): t for t in config.get("teams", [])}
 
     # Build team sections
     team_sections = ""
     # Newest season first, then alphabetical
-    for team_name, games in sorted(
+    for tid, games in sorted(
             teams.items(),
-            key=lambda kv: (-team_configs.get(kv[0], {}).get("year", 0), kv[0])):
+            key=lambda kv: (-team_configs.get(kv[0], {}).get("year", 0),
+                            kv[1][0]["team_name"])):
+        team_cfg = team_configs.get(tid, {})
+        team_name = games[0]["team_name"]
+        # Unambiguous across seasons; issue forms resolve it back to the id
+        label = team_label(team_cfg) if team_cfg else team_name
+        season = team_cfg.get("year", "")
         upcoming = [g for g in games if g["date"].date() >= date.today()]
         upcoming.sort(key=lambda g: g["date"])
 
         # Check snack signup config for this team (needed in the games loop below)
-        snack_signup_enabled = team_configs.get(team_name, {}).get("snack_signup", False)
+        snack_signup_enabled = team_cfg.get("snack_signup", False)
 
         games_html = ""
         snack_dates_shown = set()
@@ -1761,11 +1777,11 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         # Show recent past games with results (last 3)
         past = [g for g in games if g["date"] < datetime.now() and not g.get("is_practice")]
         past.sort(key=lambda g: g["date"], reverse=True)
-        past_with_results = [g for g in past if g.get("score_result") or get_game_result(config, team_name, g["date"])]
+        past_with_results = [g for g in past if g.get("score_result") or get_game_result(config, tid, g["date"])]
         for g in past_with_results[:3]:
             date_str = g["date"].strftime("%b %d")
             emoji = get_event_emoji(g, config=config, is_past=True)
-            result = g.get("score_result") or get_game_result(config, team_name, g["date"])
+            result = g.get("score_result") or get_game_result(config, tid, g["date"])
             result_label = {"W": "Win", "L": "Loss", "T": "Tie"}.get(result, "")
             score_str = f" ({g['score']})" if g.get("score") else ""
             past_link = g.get("game_url") or g.get("event_url") or g.get("team_url") or ""
@@ -1812,14 +1828,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             # Show snack tag once per day
             snack_tag = ""
             if snack_signup_enabled and date_key not in snack_dates_shown:
-                snack_families = get_snack_families(config, team_name, first["date"])
+                snack_families = get_snack_families(config, tid, first["date"])
                 if snack_families:
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                 else:
                     snack_tag = '<span class="snack-tag snack-needed">Needs lunch/snacks</span>'
                 snack_dates_shown.add(date_key)
             elif not snack_signup_enabled and date_key not in snack_dates_shown:
-                snack_families = get_snack_families(config, team_name, first["date"])
+                snack_families = get_snack_families(config, tid, first["date"])
                 if snack_families:
                     snack_tag = f'<span class="snack-tag">Lunch/Snacks: {", ".join(snack_families)}</span>'
                     snack_dates_shown.add(date_key)
@@ -1885,13 +1901,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
 
         # Get roster data for snack picker (not displayed on page)
-        team_roster = rosters_by_team.get(team_name, [])
+        team_roster = rosters_by_team.get(tid, [])
 
-        slug = team_slug(team_name)
+        slug = tid
         team_cal_url = f"{base_url}/calendars/{slug}.ics"
 
         # Build snack signup picker (only for teams with snack_signup enabled)
-        snack_signup_enabled = team_configs.get(team_name, {}).get("snack_signup", False)
+        snack_signup_enabled = team_cfg.get("snack_signup", False)
         snack_button_html = ""
         snack_picker_html = ""
         swap_picker_html = ""
@@ -1941,7 +1957,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             <label style="font-size:12px; color:#555;">{family_input_label}</label><br>
                             <input type="text" class="snack-other" data-picker="{picker_id}" placeholder="e.g. Smith, Jones" style="padding:3px 6px; font-size:13px; width:200px; margin-top:2px;">
                         </div>
-                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{team_name}')">Submit Signup</button>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px;" onclick="submitSnackSignup('{picker_id}', '{label}')">Submit Signup</button>
                     </div>"""
             snack_button_html = f'<button class="btn btn-snack" onclick="toggleSnackPicker(\'{picker_id}\')">Sign Up for Snacks</button>'
 
@@ -1955,7 +1971,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                         <strong style="font-size:13px;">Swap Lunch Day</strong>
                         <div style="margin:6px 0;">
                             <label style="font-size:12px; color:#555;">Your Family Name:</label>
-                            <select class="swap-your-family" data-picker="{swap_picker_id}" data-team="{team_name}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapFamilyChange(this)">
+                            <select class="swap-your-family" data-picker="{swap_picker_id}" data-team="{tid}" style="margin-left:4px; padding:2px 6px; font-size:13px;" onchange="onSwapFamilyChange(this)">
                                 <option value="">Select family...</option>
                                 {family_options}
                             </select>
@@ -1983,12 +1999,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                             <label style="font-size:12px; color:#555;">Notes (optional):</label><br>
                             <input type="text" class="swap-notes" data-picker="{swap_picker_id}" placeholder="e.g. Phillips can't make April 18" style="padding:3px 6px; font-size:13px; width:280px; margin-top:2px;">
                         </div>
-                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" onclick="submitSwapRequest('{swap_picker_id}', '{team_name}')">Submit Swap Request</button>
+                        <button class="btn btn-snack" style="font-size:12px; padding:4px 12px; margin-top:4px; background:#3b82f6;" onclick="submitSwapRequest('{swap_picker_id}', '{label}')">Submit Swap Request</button>
                     </div>"""
             snack_button_html += f' <button class="btn btn-snack" style="background:#3b82f6;" onclick="toggleSnackPicker(\'{swap_picker_id}\')">Swap Lunch Day</button>'
 
         # Build "Report Game Status" button link (pre-fills the issue template)
-        game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(team_name)}"
+        game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(label)}"
         game_status_btn = f'<a class="btn btn-status" href="{game_status_url}" target="_blank">Report Postponed / Cancelled</a>'
 
         # Extract org and age group from team name (e.g. "MDB Knights 11U Gold")
@@ -1997,10 +2013,11 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         team_org = team_name[:age_match.start()].strip() if age_match else team_name
 
         team_sections += f"""
-        <div class="grade-section" data-team="{team_name}" data-org="{team_org}" data-age="{team_age}">
+        <div class="grade-section" data-team="{label}" data-org="{team_org}" data-age="{team_age}" data-season="{season}">
             <button class="collapsible" onclick="toggleSection(this)">
                 <div>
                     <span class="grade-title">{team_name}</span>
+                    <span class="grade-info">{season}</span>
                     <span class="grade-info">{len(upcoming)} upcoming game{'s' if len(upcoming) != 1 else ''}</span>
                 </div>
                 <span class="arrow">&#9660;</span>
@@ -2032,7 +2049,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         if topic:
             ntfy_rows += f"""
                 <tr style="border-bottom:1px solid #ddd;">
-                    <td style="padding:8px 6px;">{team_cfg['team_name']}</td>
+                    <td style="padding:8px 6px;">{team_label(team_cfg)}</td>
                     <td style="padding:8px 6px;"><code>{topic}</code></td>
                 </tr>"""
 
@@ -2692,28 +2709,31 @@ def main():
     for i, team in enumerate(pg_teams):
         url = team["url"]
         name = team["team_name"]
+        tid = team_id(team)
         print(f"Fetching schedule for {name}...")
 
         try:
             html = fetch_team_schedule_html(url)
             games = parse_schedule(html, name, url)
+            for g in games:
+                g["team_id"] = tid
             all_games.extend(games)
 
             # Also scrape roster from the same page
             roster = parse_roster(html, name)
             if roster:
                 print(f"  Found {len(roster)} roster entries for {name}")
-                rosters_by_team[name] = roster
+                rosters_by_team[tid] = roster
             else:
                 print(f"  No roster found on page for {name}")
                 # Save HTML for debugging roster parsing
-                debug_path = f"debug_roster_{team_slug(name)}.html"
+                debug_path = f"debug_roster_{tid}.html"
                 with open(debug_path, "w") as df:
                     df.write(html)
                 print(f"  Saved page HTML to {debug_path} for debugging")
         except requests.RequestException as e:
             print(f"  ERROR fetching {name}: {e}")
-            failed_teams.add(name)
+            failed_teams.add(tid)
             continue
 
         # Polite delay between requests
@@ -2763,10 +2783,10 @@ def main():
     os.makedirs("calendars", exist_ok=True)
     games_by_team = {}
     for game in all_games:
-        games_by_team.setdefault(game["team_name"], []).append(game)
+        games_by_team.setdefault(game["team_id"], []).append(game)
 
     # Change detection and ntfy notifications
-    old_snapshot = load_previous_snapshot()
+    old_snapshot = migrate_legacy_team_keys(load_previous_snapshot(), config)
     new_snapshot = build_snapshot(games_by_team, config=config)
 
     # For teams whose fetch failed this run, carry their previous snapshot
@@ -2780,7 +2800,7 @@ def main():
                 new_snapshot[team_name] = old_snapshot[team_name]
                 print(f"  Preserving previous snapshot for {team_name} (fetch failed)")
             if base_url:
-                slug = team_slug(team_name)
+                slug = team_name  # failed_teams holds team ids
                 ics_path = f"calendars/{slug}.ics"
                 if os.path.exists(ics_path):
                     continue
@@ -2834,15 +2854,15 @@ def main():
             if base_url:
                 resp = requests.get(f"{base_url}/calendars/rosters.json", timeout=10)
                 if resp.status_code == 200:
-                    rosters_by_team = resp.json()
+                    rosters_by_team = migrate_legacy_team_keys(resp.json(), config)
                     save_rosters(rosters_by_team)
                     print(f"  Loaded {len(rosters_by_team)} team rosters from Pages")
         except Exception as e:
             print(f"  Could not fetch previous rosters: {e}")
 
-    for tname, tgames in games_by_team.items():
-        cal = make_calendar(tgames, config, cal_name=tname)
-        filename = f"calendars/{team_slug(tname)}.ics"
+    for tid, tgames in games_by_team.items():
+        cal = make_calendar(tgames, config, cal_name=tgames[0]["team_name"])
+        filename = f"calendars/{tid}.ics"
         with open(filename, "wb") as f:
             f.write(cal.to_ical())
         print(f"Wrote {filename}")

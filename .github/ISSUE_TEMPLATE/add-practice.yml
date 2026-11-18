@@ -8,28 +8,30 @@ body:
     attributes:
       label: Team
       options:
-        - MDB Knights 11U Gold
-        - MDB Knights 14U Blue
-        - MDB Knights 11U Blue
-        - MDB Knights 13U Gold
-        - MDB Knights 13U Blue
-        - MDB Knights 10U Gold
-        - Braintree Bandits 11U Mercado
-        - MDB Knights 9U Sweeney 2027
-        - MDB Knights 10U Gold 2027
-        - MDB Knights 11U Wagner 2027
-        - MDB Knights 11U Golbranson 2027
-        - MDB Knights 11U Blue 2027
-        - MDB Knights 12U Maguire 2027
-        - MDB Knights 12U Blue 2027
-        - MDB Knights 13U Schnabel 2027
-        - MDB Knights 13U Fitzgibbons 2027
-        - MDB Knights 14U Earle 2027
-        - MDB Knights 14U Butts 2027
-        - MDB Knights 14U Duffy/Fitzgerald 2027
-        - MDB Knights 15U Duffy/Morrissey 2027
-        - MDB Knights 15U Golbranson 2027
-        - MDB Knights 16/17U 2027
+        - "MDB Knights 9U Sweeney (2027)"
+        - "MDB Knights 10U Gold (2027)"
+        - "MDB Knights 11U Wagner (2027)"
+        - "MDB Knights 11U Golbranson (2027)"
+        - "MDB Knights 11U Blue (2027)"
+        - "MDB Knights 12U Gold (2027)"
+        - "MDB Knights 12U Blue (2027)"
+        - "MDB Knights 13U Schnabel (2027)"
+        - "MDB Knights 13U Fitzgibbons (2027)"
+        - "MDB Knights 14U Earle (2027)"
+        - "MDB Knights 14U Butts (2027)"
+        - "MDB Knights 14U Duffy/Fitzgerald (2027)"
+        - "MDB Knights 15U Duffy/Morrissey (2027)"
+        - "MDB Knights 15U Golbranson (2027)"
+        - "MDB Knights 16/17U (2027)"
+        - "MDB Knights 11U Gold (2026)"
+        - "MDB Knights 14U Blue (2026)"
+        - "MDB Knights 11U Blue (2026)"
+        - "MDB Knights 13U Gold (2026)"
+        - "MDB Knights 13U Blue (2026)"
+        - "MDB Knights 10U Gold (2026)"
+        - "Braintree Bandits 11U Mercado (2026)"
+        - "MDB Knights 12U Gold (2026)"
+        - "MDB Knights 12U Blue (2026)"
     validations:
       required: true
   - type: input

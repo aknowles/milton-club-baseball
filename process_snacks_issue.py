@@ -12,6 +12,8 @@ import re
 import sys
 import urllib.request
 
+from teams import resolve_team_id, team_id
+
 
 def parse_issue_body(body):
     """Parse GitHub issue form body into field dict."""
@@ -50,7 +52,7 @@ def save_config(config, path="config.json"):
 
 def send_ntfy(config, team, message_title, message_body):
     """Send ntfy notification for a team."""
-    team_cfg = next((t for t in config.get("teams", []) if t["team_name"] == team), None)
+    team_cfg = next((t for t in config.get("teams", []) if team_id(t) == team), None)
     ntfy_topic = team_cfg.get("ntfy_topic") if team_cfg else None
     if ntfy_topic:
         try:
@@ -68,9 +70,9 @@ def send_ntfy(config, team, message_title, message_body):
 
 def process_signup(fields, config):
     """Process a snack signup issue."""
-    team = fields.get("team", "")
+    team = resolve_team_id(config, fields.get("team", ""))
     if not team:
-        print("ERROR: No team specified")
+        print(f"ERROR: Unknown or missing team '{fields.get('team', '')}'")
         sys.exit(1)
 
     date_val = fields.get("game_date", fields.get("date", ""))
@@ -116,9 +118,9 @@ def process_signup(fields, config):
 
 def process_swap(fields, config):
     """Process a snack swap — one family replaces another, with optional return swap."""
-    team = fields.get("team", "")
+    team = resolve_team_id(config, fields.get("team", ""))
     if not team:
-        print("ERROR: No team specified")
+        print(f"ERROR: Unknown or missing team '{fields.get('team', '')}'")
         sys.exit(1)
 
     family_name = fields.get("family_name", "").strip()
