@@ -80,7 +80,8 @@
     },
     {
       "id": "mdb-knights-9u-sweeney-2027",
-      "team_name": "MDB Knights 9U Sweeney",
+      "team_name": "MDB Knights 9U",
+      "coach": "Sweeney",
       "year": 2027,
       "ntfy_topic": "mdb-knights-9u-sweeney-2027",
       "snack_signup": false
@@ -94,14 +95,16 @@
     },
     {
       "id": "mdb-knights-11u-wagner-2027",
-      "team_name": "MDB Knights 11U Wagner",
+      "team_name": "MDB Knights 11U",
+      "coach": "Wagner",
       "year": 2027,
       "ntfy_topic": "mdb-knights-11u-wagner-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-11u-golbranson-2027",
-      "team_name": "MDB Knights 11U Golbranson",
+      "team_name": "MDB Knights 11U",
+      "coach": "Golbranson",
       "year": 2027,
       "ntfy_topic": "mdb-knights-11u-golbranson-2027",
       "snack_signup": false
@@ -116,6 +119,7 @@
     {
       "id": "mdb-knights-12u-gold-2027",
       "team_name": "MDB Knights 12U Gold",
+      "coach": "Maguire",
       "year": 2027,
       "ntfy_topic": "mdb-knights-12u-gold-2027",
       "snack_signup": false
@@ -129,49 +133,56 @@
     },
     {
       "id": "mdb-knights-13u-schnabel-2027",
-      "team_name": "MDB Knights 13U Schnabel",
+      "team_name": "MDB Knights 13U",
+      "coach": "Schnabel",
       "year": 2027,
       "ntfy_topic": "mdb-knights-13u-schnabel-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-13u-fitzgibbons-2027",
-      "team_name": "MDB Knights 13U Fitzgibbons",
+      "team_name": "MDB Knights 13U",
+      "coach": "Fitzgibbons",
       "year": 2027,
       "ntfy_topic": "mdb-knights-13u-fitzgibbons-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-14u-earle-2027",
-      "team_name": "MDB Knights 14U Earle",
+      "team_name": "MDB Knights 14U",
+      "coach": "Earle",
       "year": 2027,
       "ntfy_topic": "mdb-knights-14u-earle-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-14u-butts-2027",
-      "team_name": "MDB Knights 14U Butts",
+      "team_name": "MDB Knights 14U",
+      "coach": "Butts",
       "year": 2027,
       "ntfy_topic": "mdb-knights-14u-butts-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-14u-duffy-fitzgerald-2027",
-      "team_name": "MDB Knights 14U Duffy/Fitzgerald",
+      "team_name": "MDB Knights 14U",
+      "coach": "Duffy/Fitzgerald",
       "year": 2027,
       "ntfy_topic": "mdb-knights-14u-duffy-fitzgerald-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-15u-duffy-morrissey-2027",
-      "team_name": "MDB Knights 15U Duffy/Morrissey",
+      "team_name": "MDB Knights 15U",
+      "coach": "Duffy/Morrissey",
       "year": 2027,
       "ntfy_topic": "mdb-knights-15u-duffy-morrissey-2027",
       "snack_signup": false
     },
     {
       "id": "mdb-knights-15u-golbranson-2027",
-      "team_name": "MDB Knights 15U Golbranson",
+      "team_name": "MDB Knights 15U",
+      "coach": "Golbranson",
       "year": 2027,
       "ntfy_topic": "mdb-knights-15u-golbranson-2027",
       "snack_signup": false

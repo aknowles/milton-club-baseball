@@ -165,6 +165,7 @@ Edit `config.json` to add or modify teams, practices, notices, and snacks:
     {
       "id": "mdb-knights-12u-gold-2027",
       "team_name": "MDB Knights 12U Gold",
+      "coach": "Maguire",
       "year": 2027,
       "url": "https://www.perfectgame.org/PGBA/Team/default.aspx?...",
       "ntfy_topic": "mdb-knights-12u-gold-2027"
@@ -184,11 +185,12 @@ Each team has three separate things:
 
 - **`id`** — the stable key. It names the calendar file (`calendars/<id>.ics`) and keys every per-team block in `config.json` (`practices`, `snacks`, `game_overrides`, `game_results`, `practice_sheets[].teams`). Don't change it once families have subscribed.
 - **`team_name`** — the display name. Change it whenever you like (e.g. from a coach's name to the official Gold/Blue name); nothing else needs to move.
+- **`coach`** — optional coach surname(s), shown beside the name on the page, in the calendar name and in issue forms (`MDB Knights 12U Gold – Coach Maguire`). A team whose official name isn't known yet can be just `MDB Knights 11U` plus a coach.
 - **`year`** — the season. A new season's teams are new entries with new ids, so they never write onto last year's feeds, and two seasons can share a `team_name`.
 
 `url` is optional: a team without one is practices-only until Perfect Game lists it. `ntfy_topic` is what families subscribe to, so treat it like the id.
 
-Issue forms show teams as `Name (year)`; the processors resolve that (or an id, or a bare name, which picks the newest season) back to the id. After adding, renaming or removing a team, run `python sync_issue_templates.py` to regenerate the Team dropdowns.
+Issue forms show teams as `Name – Coach X (year)`; the processors resolve that (or an id, or a bare name, which picks the newest season) back to the id. After adding, renaming or removing a team, run `python sync_issue_templates.py` to regenerate the Team dropdowns.
 
 ## Local Development
 

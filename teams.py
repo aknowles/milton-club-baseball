@@ -7,6 +7,7 @@ Each entry in config.json's ``teams`` list has:
     game_overrides, game_results, practice_sheets). Never change it once
     families have subscribed.
   - ``team_name``: display name. Safe to change at any time.
+  - ``coach``: optional coach surname(s), shown beside the name everywhere.
   - ``year``: season. Two seasons may reuse the same team_name.
 """
 
@@ -23,10 +24,17 @@ def team_id(team):
     return team.get("id") or slugify(team["team_name"])
 
 
+def team_display(team):
+    """Name as shown to families, e.g. 'MDB Knights 12U Gold – Coach Maguire'."""
+    coach = team.get("coach")
+    return f"{team['team_name']} – Coach {coach}" if coach else team["team_name"]
+
+
 def team_label(team):
-    """Unambiguous human label, e.g. 'MDB Knights 12U Blue (2027)'."""
+    """Unambiguous human label for issue forms, e.g.
+    'MDB Knights 12U Gold – Coach Maguire (2027)'."""
     year = team.get("year")
-    return f"{team['team_name']} ({year})" if year else team["team_name"]
+    return f"{team_display(team)} ({year})" if year else team_display(team)
 
 
 def resolve_team_id(config, text):
@@ -41,7 +49,8 @@ def resolve_team_id(config, text):
         return None
     teams = config.get("teams", [])
     for team in teams:
-        if wanted in (team_id(team).lower(), team_label(team).lower()):
+        if wanted in (team_id(team).lower(), team_label(team).lower(),
+                      team_display(team).lower()):
             return team_id(team)
     by_name = [t for t in teams if t["team_name"].lower() == wanted]
     if by_name:

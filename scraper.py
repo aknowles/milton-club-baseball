@@ -22,7 +22,7 @@ import requests
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event, vText
 
-from teams import slugify, team_id, team_label
+from teams import slugify, team_display, team_id, team_label
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1611,7 +1611,7 @@ def notify_changes(changes, config):
         if not topic or not change_list:
             continue
         body = "\n".join(change_list)
-        send_ntfy(topic, f"Schedule Update: {team['team_name']}", body)
+        send_ntfy(topic, f"Schedule Update: {team_display(team)}", body)
 
 
 # ---------------------------------------------------------------------------
@@ -1758,12 +1758,15 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     # Newest season first, then alphabetical
     for tid, games in sorted(
             teams.items(),
-            key=lambda kv: (-team_configs.get(kv[0], {}).get("year", 0),
-                            kv[1][0]["team_name"])):
+            key=lambda kv: (
+                -team_configs.get(kv[0], {}).get("year", 0),
+                int((re.search(r"(\d+)", kv[1][0]["team_name"]) or [0, 0])[1]),
+                kv[1][0]["team_name"], kv[0])):
         team_cfg = team_configs.get(tid, {})
         team_name = games[0]["team_name"]
         # Unambiguous across seasons; issue forms resolve it back to the id
         label = team_label(team_cfg) if team_cfg else team_name
+        display_name = team_display(team_cfg) if team_cfg else team_name
         season = team_cfg.get("year", "")
         upcoming = [g for g in games if g["date"].date() >= date.today()]
         upcoming.sort(key=lambda g: g["date"])
@@ -2016,7 +2019,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         <div class="grade-section" data-team="{label}" data-org="{team_org}" data-age="{team_age}" data-season="{season}">
             <button class="collapsible" onclick="toggleSection(this)">
                 <div>
-                    <span class="grade-title">{team_name}</span>
+                    <span class="grade-title">{display_name}</span>
                     <span class="grade-info">{season}</span>
                     <span class="grade-info">{len(upcoming)} upcoming game{'s' if len(upcoming) != 1 else ''}</span>
                 </div>
@@ -2860,8 +2863,11 @@ def main():
         except Exception as e:
             print(f"  Could not fetch previous rosters: {e}")
 
+    teams_by_id = {team_id(t): t for t in teams}
     for tid, tgames in games_by_team.items():
-        cal = make_calendar(tgames, config, cal_name=tgames[0]["team_name"])
+        cal_name = (team_display(teams_by_id[tid]) if tid in teams_by_id
+                    else tgames[0]["team_name"])
+        cal = make_calendar(tgames, config, cal_name=cal_name)
         filename = f"calendars/{tid}.ics"
         with open(filename, "wb") as f:
             f.write(cal.to_ical())
