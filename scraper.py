@@ -1751,6 +1751,14 @@ def make_calendar(games, config, cal_name="Milton Club Baseball"):
 # Index HTML generation (matching ssbball style)
 # ---------------------------------------------------------------------------
 
+BASEBALL_SVG = (
+    '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" '
+    'stroke-width="1.6" stroke-linecap="round" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="9.2"/>'
+    '<path d="M6.2 4.9c2.6 4.2 2.6 10 0 14.2M17.8 4.9c-2.6 4.2-2.6 10 0 14.2"/></svg>'
+)
+
+
 def generate_index_html(all_games, config, rosters_by_team=None):
     """Generate an index.html for GitHub Pages with calendar subscribe links."""
     rosters_by_team = rosters_by_team or {}
@@ -1767,8 +1775,12 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     # Build lookup for team config
     team_configs = {team_id(t): t for t in config.get("teams", [])}
 
+    latest_season = max((t.get("year", 0) for t in config.get("teams", [])), default=0)
+
     # Build team sections
     team_sections = ""
+    past_sections = ""
+    past_count = 0
     # Newest season first, then alphabetical
     for tid, games in sorted(
             teams.items(),
@@ -1818,9 +1830,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
             date_key = g["date"].strftime("%Y-%m-%d")
             games_by_date.setdefault(date_key, []).append(g)
 
+        month_rows = OrderedDict()  # "December 2026" -> [row html]
         for date_key, day_games in games_by_date.items():
             first = day_games[0]
-            date_str = first["date"].strftime("%b %d")
+            date_str = first["date"].strftime("%a, %b %-d")
             emoji = get_event_emoji(first, config=config, is_past=False)
             is_dh = len(day_games) > 1
 
@@ -1900,21 +1913,52 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 else:
                     jersey_tag = '<span class="jersey-tag jersey-white" title="Home game — white jersey">⚪ White</span>'
 
-            games_html += f"""
+            # Venue: short name, linked to a map of the full address
+            full_loc = first.get("address") or first.get("location") or loc_str
+            if first.get("is_practice") and loc_str:
+                loc_str = loc_str.split(",")[0]
+            loc_html = ""
+            if loc_str:
+                maps_url = f"https://www.google.com/maps/search/?api=1&query={quote(full_loc)}"
+                loc_html = f'<a class="game-location" href="{maps_url}" target="_blank" title="{full_loc}">\U0001F4CD {loc_str}</a>'
+
+            month_rows.setdefault(first["date"].strftime("%B %Y"), []).append(f"""
                 <div class="{row_class}">
                     <span class="game-emoji">{emoji}</span>
-                    <span class="game-date">{date_str}</span>
-                    <span class="game-time">{time_str}</span>
-                    <span class="game-matchup">{matchup_html}</span>
-                    <span class="game-location">{loc_str}</span>
-                    {jersey_tag}
-                    {travel_tag}
-                    {status_tag}
-                    {snack_tag}
-                </div>"""
+                    <div class="game-when">
+                        <span class="game-date">{date_str}</span>
+                        <span class="game-time">{time_str}</span>
+                    </div>
+                    <div class="game-main">
+                        <div class="game-matchup">{matchup_html}
+                            {jersey_tag}
+                            {travel_tag}
+                            {status_tag}
+                            {snack_tag}
+                        </div>
+                        {loc_html}
+                    </div>
+                </div>""")
+
+        # One collapsible block per month; only the first starts open
+        for i, (month_label, rows) in enumerate(month_rows.items()):
+            games_html += f"""
+                <details class="month-group"{' open' if i == 0 else ''}>
+                    <summary>{month_label} <span class="month-count">{len(rows)}</span></summary>
+                    {''.join(rows)}
+                </details>"""
+
+        n_practices = sum(1 for g in upcoming if g.get("is_practice"))
+        n_games = len(upcoming) - n_practices
+        counts = []
+        if n_games:
+            counts.append(f"{n_games} game{'s' if n_games != 1 else ''}")
+        if n_practices:
+            counts.append(f"{n_practices} practice{'s' if n_practices != 1 else ''}")
+        upcoming_label = " &middot; ".join(counts) or "No upcoming events"
 
         event_label = ""
-        if games and games[0].get("event_name"):
+        if games and games[0].get("event_name") and not games[0].get("is_practice"):
             event_label = f'<span class="event-tag">{games[0]["event_name"]}</span>'
 
         # Get roster data for snack picker (not displayed on page)
@@ -2022,20 +2066,34 @@ def generate_index_html(all_games, config, rosters_by_team=None):
 
         # Build "Report Game Status" button link (pre-fills the issue template)
         game_status_url = f"https://github.com/aknowles/milton-club-baseball/issues/new?template=game-status.yml&title=%5BGame+Status%5D+{quote(label)}"
-        game_status_btn = f'<a class="btn btn-status" href="{game_status_url}" target="_blank">Report Postponed / Cancelled</a>'
+        game_status_btn = ""
+        if n_games:
+            game_status_btn = f'<a class="btn btn-status" href="{game_status_url}" target="_blank">Report Postponed / Cancelled</a>'
+
+        ntfy_topic = team_cfg.get("ntfy_topic", "")
+        ntfy_html = ""
+        if ntfy_topic:
+            ntfy_html = f"""
+                <div class="ntfy-line">\U0001F514 Push alerts: <a href="https://ntfy.sh/{ntfy_topic}" target="_blank"><code>{ntfy_topic}</code></a>
+                    <button onclick="copyUrl('{ntfy_topic}')" title="Copy topic">&#128203;</button>
+                </div>"""
+
 
         # Extract org and age group from team name (e.g. "MDB Knights 11U Gold")
-        age_match = re.search(r"\b(\d+U)\b", team_name, re.IGNORECASE)
+        age_match = re.search(r"\b([\d/]+U)\b", team_name, re.IGNORECASE)
         team_age = age_match.group(1) if age_match else ""
         team_org = team_name[:age_match.start()].strip() if age_match else team_name
 
-        team_sections += f"""
+        coach = team_cfg.get("coach")
+        meta = " &middot; ".join(str(p) for p in (
+            f"Coach {coach}" if coach else "", season, upcoming_label) if p)
+        section_html = f"""
         <div class="grade-section" data-team="{label}" data-org="{team_org}" data-age="{team_age}" data-season="{season}">
             <button class="collapsible" onclick="toggleSection(this)">
-                <div>
-                    <span class="grade-title">{display_name}</span>
-                    <span class="grade-info">{season}</span>
-                    <span class="grade-info">{len(upcoming)} upcoming game{'s' if len(upcoming) != 1 else ''}</span>
+                <span class="team-badge">{team_age or BASEBALL_SVG}</span>
+                <div class="team-head">
+                    <span class="grade-title">{team_name}</span>
+                    <span class="grade-info">{meta}</span>
                 </div>
                 <span class="arrow">&#9660;</span>
             </button>
@@ -2051,13 +2109,26 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                     {snack_button_html}
                     {game_status_btn}
                 </div>
+                {ntfy_html}
                 {snack_picker_html}
                 {swap_picker_html}
                 <div class="upcoming-games">
-                    {games_html if games_html else '<p style="color:#666;">No upcoming games found.</p>'}
+                    {games_html if games_html else '<p style="color:#666;">No upcoming events.</p>'}
                 </div>
             </div>
         </div>"""
+        if season == latest_season:
+            team_sections += section_html
+        else:
+            past_sections += section_html
+            past_count += 1
+
+    if past_sections:
+        team_sections += f"""
+        <details class="past-seasons">
+            <summary>Past seasons <span class="month-count">{past_count}</span></summary>
+            {past_sections}
+        </details>"""
 
     # Build ntfy topic rows for the notifications table
     ntfy_rows = ""
@@ -2228,8 +2299,46 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         }}
         .collapsible:hover {{ background: #2a2a4e; }}
         .collapsible.active {{ border-radius: 10px 10px 0 0; }}
+        .collapsible {{ gap: 12px; text-align: left; }}
+        .team-badge {{
+            flex: none;
+            min-width: 44px;
+            height: 44px;
+            padding: 0 6px;
+            border-radius: 22px;
+            background: #1e6b3a;
+            color: white;
+            font-weight: 700;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .team-head {{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
         .grade-title {{ font-weight: 700; }}
-        .grade-info {{ font-size: 13px; opacity: 0.8; margin-left: 12px; }}
+        .grade-info {{ font-size: 13px; opacity: 0.8; }}
+        .site-mark {{ color: #1e6b3a; vertical-align: -0.12em; }}
+        .month-group {{ background: white; border-radius: 8px; margin-bottom: 8px; padding: 0 12px; }}
+        .month-group > summary, .past-seasons > summary {{
+            cursor: pointer;
+            font-weight: 600;
+            padding: 10px 0;
+        }}
+        .month-count {{
+            display: inline-block;
+            background: #e8e8e8;
+            color: #555;
+            border-radius: 10px;
+            padding: 1px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 4px;
+        }}
+        .past-seasons {{ margin-top: 20px; }}
+        .past-seasons > summary {{ color: #555; margin-bottom: 8px; }}
+        .ntfy-line {{ font-size: 13px; color: #555; margin-bottom: 12px; }}
+        .ntfy-line a {{ color: #1e6b3a; }}
+        .ntfy-line button {{ background: none; border: none; cursor: pointer; font-size: 14px; }}
         .arrow {{ transition: transform 0.3s; }}
         .collapsible.active .arrow {{ transform: rotate(180deg); }}
         .collapsible-content {{
@@ -2254,10 +2363,14 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         }}
         .game-row:last-child {{ border-bottom: none; }}
         .game-past {{ opacity: 0.7; }}
+        .game-row {{ border-bottom-color: #eee; }}
         .game-emoji {{ min-width: 24px; text-align: center; }}
-        .game-date {{ font-weight: 600; min-width: 50px; }}
-        .game-time {{ color: #666; min-width: 70px; }}
-        .game-matchup {{ flex: 1; }}
+        .game-when {{ display: flex; flex-direction: column; min-width: 92px; }}
+        .game-date {{ font-weight: 600; }}
+        .game-time {{ color: #666; font-size: 13px; }}
+        .game-main {{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
+        .game-location {{ text-decoration: none; }}
+        .game-location:hover {{ text-decoration: underline; }}
         .game-link {{ color: #1e6b3a; text-decoration: none; }}
         .game-link:hover {{ text-decoration: underline; }}
         .game-location {{ color: #888; font-size: 12px; }}
@@ -2335,13 +2448,13 @@ def generate_index_html(all_games, config, rosters_by_team=None):
     </style>
 </head>
 <body>
-    <h1>Milton Club Baseball</h1>
-    <p class="subtitle">Subscribe to automatically sync game schedules to your calendar</p>
+    <h1><span class="site-mark">{BASEBALL_SVG}</span> Milton Club Baseball</h1>
+    <p class="subtitle">Game and practice schedules that sync to your calendar</p>
 
     <div id="copied" class="copied">URL Copied!</div>
 
     <h2>Team Schedules</h2>
-    <p style="color: #666; font-size: 14px;">Click a team to subscribe to their calendar or see upcoming games.</p>
+    <p style="color: #666; font-size: 14px;">Tap a team to subscribe to its calendar or see upcoming games and practices.</p>
 
     <div class="filter-bar" id="filter-bar"></div>
 
@@ -2364,8 +2477,10 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         <ol>
             <li>Install the free <a href="https://ntfy.sh" style="color:#1e6b3a; font-weight:600;">ntfy app</a> (<a href="https://apps.apple.com/us/app/ntfy/id1625396347" style="color:#1e6b3a;">iOS</a> / <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" style="color:#1e6b3a;">Android</a>)</li>
             <li>Open the app and tap <strong>+</strong> to subscribe to a topic</li>
-            <li>Enter your team's topic from the table below</li>
+            <li>Enter your team's topic &mdash; it's shown under <strong>Push alerts</strong> in each team's section above</li>
         </ol>
+        <details>
+        <summary style="cursor:pointer; font-weight:600;">All team topics</summary>
         <table style="width:100%; border-collapse:collapse; margin-top:12px; font-size:14px;">
             <thead>
                 <tr style="border-bottom:2px solid #1e6b3a; text-align:left;">
@@ -2377,6 +2492,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
                 {ntfy_rows}
             </tbody>
         </table>
+        </details>
     </div>
 
     <div class="instructions" style="margin-top: 16px;">
@@ -2458,6 +2574,7 @@ def generate_index_html(all_games, config, rosters_by_team=None):
         function copyUrl(url) {{
             navigator.clipboard.writeText(url).then(() => {{
                 const el = document.getElementById('copied');
+                el.textContent = url.startsWith('http') ? 'URL Copied!' : 'Copied!';
                 el.style.display = 'block';
                 setTimeout(() => el.style.display = 'none', 2000);
             }});
