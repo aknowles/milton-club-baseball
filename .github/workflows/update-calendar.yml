@@ -26,6 +26,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write  # keepalive step re-enables this workflow
 
 concurrency:
   group: "pages"
@@ -65,6 +66,16 @@ jobs:
       - name: Run scraper
         run: python scraper.py
 
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity, which happens every off-season. Re-enabling the workflow
+      # through the API resets that clock.
+      - name: Keep scheduled runs alive
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update-calendar.yml/enable"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
@@ -85,6 +96,8 @@ jobs:
     needs: [scrape, deploy]
     if: failure()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Create failure issue
         uses: actions/github-script@v8
